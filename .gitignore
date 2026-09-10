@@ -1,0 +1,11 @@
+data/**
+!data/**/
+!data/**/.gitkeep
+!data/clips/README.md
+outputs/*
+!outputs/.gitkeep
+*.mp4
+*.npz
+.venv/
+__pycache__/
+.DS_Store
