@@ -6,6 +6,7 @@ outputs/*
 !outputs/.gitkeep
 *.mp4
 *.npz
+*.pt
 .venv/
 __pycache__/
 .DS_Store
