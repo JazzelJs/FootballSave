@@ -279,6 +279,16 @@ the pitch frame when loaded — never stored in its original frame.
 | SoccerNet-v3D — `yolo-sn-ball-opt.pt` | YOLOv11 ball detector, fine-tuned on broadcast | 5 | 49 MB | GPL-2.0. `*.pt` is gitignored |
 | [KTH Multiview Football II](https://www.csc.kth.se/cvap/cvg/?page=footballdataset2) — 3D part | 3 synced views, 800 frames, 14-joint 3D pose GT, camera per frame | 4, 5 stretch | ~200–250 MB per sequence | Academic use only. 2013, close-up footage. Download one sequence only |
 
+KTH layout (checked on `data/kth/sequence2/`, 175 frames): text files with one number per line.
+`positions3d.txt` → `reshape(F,14,3)`; `positions2d.txt` → `reshape(F,3,14,2)` (per frame, per
+camera); `cameras.txt` → `reshape(F,3,4,2).transpose(0,1,3,2)` = 2×4 affine camera per frame
+per camera (MATLAB column-major). Joints in LSP order: R ankle, R knee, R hip, L hip, L knee,
+L ankle, R wrist, R elbow, R shoulder, L shoulder, L elbow, L wrist, neck, head top.
+3D is body-centred, `z` up, ~meters. Images are 480×640 crops that follow the player.
+GT quality: reprojection median 5.7 px, but the **left leg/wrist** is off by up to 100 px
+(~0.45 m) in frames ~77–87 (occluded challenge) and a few others. Bone lengths vary
+±4–6 cm between frames, so the GT itself is noisy by about that much.
+
 ---
 
 ## Things NOT to do (yet)
