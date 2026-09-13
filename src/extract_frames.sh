@@ -6,13 +6,13 @@ set -euo pipefail
 in="$1"; name="$2"; start="$3"; end="$4"
 clip="data/clips/$name.mp4"
 frames="data/frames/$name"
-mkdir -p "$frames"
+rm -rf "data/frames/${name:?}" && mkdir -p "$frames"   # no stale frames from a longer earlier run
 
 # Re-encode instead of -c copy: stream copy can only cut at keyframes, so the clip would start early.
-ffmpeg -hide_banner -loglevel error -y -ss "$start" -to "$end" -i "$in" -c:v libx264 -crf 18 -an "$clip"
+ffmpeg -nostdin -hide_banner -loglevel error -y -ss "$start" -to "$end" -i "$in" -c:v libx264 -crf 18 -an "$clip"
 
 # -start_number 0 so file 00000.jpg = frame 0 in tracks.json
-ffmpeg -hide_banner -loglevel error -y -i "$clip" -q:v 2 -start_number 0 "$frames/%05d.jpg"
+ffmpeg -nostdin -hide_banner -loglevel error -y -i "$clip" -q:v 2 -start_number 0 "$frames/%05d.jpg"
 
 ffprobe -v error -select_streams v:0 -show_entries stream=width,height,r_frame_rate,nb_frames \
   -of default=noprint_wrappers=1 "$clip"
