@@ -27,8 +27,7 @@ Rule of thumb: if a stage takes more than ~2x the estimate, stop and ask Claude
   (left or right of screen).
   Different angles *between* clips are fine (each clip gets its own H); an angle change
   *within* a clip is not.
-- [YOU] Download one SoccerNet Game State Reconstruction (GSR) validation clip. This has
-  ground-truth player positions in meters — you'll use it to measure your errors.
+- ~~[YOU] Download one SoccerNet GSR validation clip.~~ Deferred to Stage 2 (first used there).
 
 **Checkpoint**
 - Frames extracted; you can state the fps and resolution of each clip.
@@ -103,6 +102,11 @@ is 1 px of click error worth more meters on the far side of the box?
 - [YOU] Foot point = bottom-center of each box → pitch meters using Stage 1 H.
 - [YOU] Write `tracks.json` (format below).
 - [CLAUDE] 2D minimap video (top-down pitch with dots) next to the original frame.
+- [YOU] Download one SoccerNet Game State Reconstruction (GSR) validation clip (moved from
+  Stage 0). Ground-truth player positions in meters, from another match and stadium.
+  Check the download size first (the downloader fetches a whole split). Watch out: 25 fps,
+  origin at the centre spot (convert to our frame), and a moving camera, so pick a steady
+  5–10 s stretch or use the Stage 1 moving-camera method to get H per frame.
 - [YOU] Evaluate on the SoccerNet GSR clip: match your players to ground truth and
   compute mean position error in meters. Look at the worst cases and say WHY they're bad.
 - [TOGETHER, optional] Run the full sn-gamestate baseline in Colab on the same GSR clip
@@ -274,7 +278,7 @@ the pitch frame when loaded — never stored in its original frame.
 
 | Resource | What's in it | Used in | Size | Notes |
 |---|---|---|---|---|
-| SoccerNet GSR (validation clip) | Broadcast clips + player positions in meters | 0, 2 | per clip | Ground truth for position error |
+| SoccerNet GSR (validation clip) | Broadcast clips + player positions in meters | 2 | whole split (check size) | Ground truth for position error |
 | [SoccerNet-v3D](https://github.com/mguti97/SoccerNet-v3D) — `SNv3D.csv` | Per image: full camera (K,R,t), 2D ball box, triangulated 3D ball | 1 stretch, 5 | 3.6 MB | No code in the repo, only data + weights (release v1.0.0). Paper: arXiv 2504.10106 |
 | SoccerNet-v3D — `yolo-sn-ball-opt.pt` | YOLOv11 ball detector, fine-tuned on broadcast | 5 | 49 MB | GPL-2.0. `*.pt` is gitignored |
 | [KTH Multiview Football II](https://www.csc.kth.se/cvap/cvg/?page=footballdataset2) — 3D part | 3 synced views, 800 frames, 14-joint 3D pose GT, camera per frame | 4, 5 stretch | ~200–250 MB per sequence | Academic use only. 2013, close-up footage. Download one sequence only |
