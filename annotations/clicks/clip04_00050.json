@@ -1,0 +1,57 @@
+{
+  "frame": "data/frames/clip04/00050.jpg",
+  "points_px": {
+    "goalpost_left": [
+      757.3,
+      425.6
+    ],
+    "goalpost_right": [
+      591.8,
+      486.2
+    ],
+    "goal_area_goalline_left": [
+      863.8,
+      384.7
+    ],
+    "goal_area_goalline_right": [
+      455.0,
+      537.9
+    ],
+    "goal_area_front_left": [
+      1040.8,
+      403.5
+    ],
+    "goal_area_front_right": [
+      650.8,
+      566.5
+    ],
+    "box_goalline_left": [
+      1059.6,
+      313.4
+    ],
+    "box_goalline_right": [
+      117.5,
+      660.7
+    ],
+    "box_front_left": [
+      1599.5,
+      365.0
+    ],
+    "box_front_right": [
+      813.8,
+      775.4
+    ],
+    "penalty_spot": [
+      1065.3,
+      505.1
+    ],
+    "arc_left": [
+      1407.8,
+      463.3
+    ],
+    "arc_right": [
+      1133.3,
+      606.7
+    ]
+  }
+}
