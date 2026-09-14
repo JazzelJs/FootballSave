@@ -261,7 +261,9 @@ with 4 px reprojection error still be badly wrong in 3D?
 }
 ```
 
-`camera.json` — per frame: homography `H` (3x3), later full camera (K, R, t) if available.
+`camera.json` = `data/camera/<clip>.json` — per frame: `frame`, homography `H` (3x3, pitch meters →
+pixels, `H[2][2] = 1`), `pnl_rep_err_px` (PnLCalib's self-reported error). Frames without a camera are
+left out. Written by `src/calib/export_camera.py`. Full camera (K, R, t) gets added in Stage 5.
 
 `pose_<id>.npz` — per frame: SMPL `global_orient` (3), `body_pose` (69), `betas` (10),
 `frame` index.
