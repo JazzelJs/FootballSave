@@ -50,9 +50,10 @@ Don't write the explanation for me — correct it if it's wrong.
 - MacBook with Apple Silicon. No NVIDIA GPU, no CUDA.
 - PyTorch GPU on Mac = `device="mps"`. Ultralytics YOLO supports this.
 - **Never try to install CUDA-dependent packages locally** (mmcv with ops, detectron2,
-  pytorch3d, DPVO, sn-gamestate/tracklab). For those, write a Google Colab notebook in
-  `notebooks/colab/` that runs the model and exports results to files.
-- Heavy model → Colab → export JSON/NPZ → everything else runs locally.
+  pytorch3d, DPVO, sn-gamestate/tracklab, PnLCalib). For those, write a Google Colab or
+  Kaggle notebook in `notebooks/colab/` or `notebooks/kaggle/` that runs the model and
+  exports results to files.
+- Heavy model → Colab/Kaggle → export JSON/NPZ → everything else runs locally.
 - Python env: `uv`. Video tools: `ffmpeg` (Homebrew).
 
 ## Project conventions
