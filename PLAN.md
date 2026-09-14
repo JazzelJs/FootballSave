@@ -268,6 +268,11 @@ with 4 px reprojection error still be badly wrong in 3D?
 
 `ball3d.json` — per frame: `x, y, z` in meters + fit residual.
 
+`annotations/clicks/<clip>_<frame>.json` — hand-clicked pitch points for one frame:
+`{"frame": "...", "points_px": {"box_front_right": [u, v], ...}}`. Names = keys of
+`POINTS` in `src/calib/pitch_model.py`; points not visible are simply absent. Tracked in
+git (hand-made, can't be regenerated).
+
 Units: meters and pitch frame everywhere, except `*_px` fields (pixels).
 External data in other frames (e.g. SoccerNet: origin at center spot) gets converted to
 the pitch frame when loaded — never stored in its original frame.
