@@ -42,6 +42,11 @@ def main(frame_path):
     def on_key(e):
         nonlocal i
         if e.key == " " and i < len(names) and e.inaxes is ax:
+            h, w = img.shape[:2]
+            if not (3 <= e.xdata <= w - 4 and 3 <= e.ydata <= h - 4):
+                ax.set_title(f"{names[i]}: that's the edge of the picture, not a corner. ENTER = not visible, skip")
+                fig.canvas.draw_idle()
+                return
             name = names[i]
             clicks[name] = [round(float(e.xdata), 1), round(float(e.ydata), 1)]
             (dot,) = ax.plot(*clicks[name], "r+", ms=14, mew=1.5)

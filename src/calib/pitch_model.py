@@ -44,6 +44,22 @@ POINTS = {
     "arc_right": (ARC_X, BOX_DEPTH, 0.0),
 }
 
+# Straight painted lines, as (start point, end point) pairs from POINTS.
+# Used to draw the pitch back onto a frame. (The curved arc is drawn separately.)
+LINES = [
+    #  7 lines in total: the goal line, the penalty box's other 3 sides,
+    # and the goal area's 3 sides (its 4th side is part of the goal line).
+    # Example format: ("goalpost_left", "goalpost_right"),
+
+    ("goal_area_goalline_left", "goal_area_front_left"),
+    ("goal_area_front_left", "goal_area_front_right"),
+    ("goal_area_front_right", "goal_area_goalline_right"),
+    ("box_goalline_left", "box_goalline_right"),
+    ("box_goalline_left", "box_front_left"),
+    ("box_front_left", "box_front_right"),
+    ("box_front_right", "box_goalline_right"),
+]
+
 
 def check():
     missing = [k for k, v in POINTS.items() if v is None and not k.startswith("arc_")]
