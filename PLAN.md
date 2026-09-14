@@ -84,10 +84,14 @@ the air? What happens to accuracy if all your clicked points are close together?
 is 1 px of click error worth more meters on the far side of the box?
 
 **Moving camera (after the easy clip works):**
-- [YOU] Calibrate every ~10th frame by hand, interpolate H in between. Measure how bad
-  interpolation is on a frame you calibrated but held out.
-- [TOGETHER] Then try an automatic method (PnLCalib or No-Bells-Just-Whistles) in Colab,
-  and compare it with your manual calibration on the same frames.
+- ~~[YOU] Calibrate every ~10th frame by hand, interpolate H in between. Measure how bad
+  interpolation is on a frame you calibrated but held out.~~ Done on clip04: every 25th frame
+  (50 fps), `src/calib/interpolate.py`. 15.1 px with keyframes 1 s apart, 21.8 px at 2 s.
+- ~~[TOGETHER] Then try an automatic method (PnLCalib or No-Bells-Just-Whistles) in Colab,
+  and compare it with your manual calibration on the same frames.~~ Done: PnLCalib on Kaggle
+  (`notebooks/kaggle/pnlcalib_clip04.ipynb`), 5.9 px vs clicks (`src/calib/compare_pnl.py`).
+  Used for `data/camera/clip04.json` (`src/calib/export_camera.py`). New clips: run PnLCalib,
+  click 3–4 frames to check it. `pitch_to_soccernet` only handles "goal on the left" so far.
 
 ---
 
