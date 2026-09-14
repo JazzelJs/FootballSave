@@ -66,3 +66,5 @@ Don't write the explanation for me — correct it if it's wrong.
 - Keep code small and readable over clever. One script per step is fine.
 - Large files (`data/`, `outputs/`) are gitignored.
 - Commit after each passed checkpoint with a message like `stage1: homography works (2.1 px)`.
+- No Claude attribution anywhere in git or GitHub: no `Co-Authored-By` trailers, no
+  "Generated with Claude" lines in commits or PRs.
