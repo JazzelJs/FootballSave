@@ -3,7 +3,12 @@ name = "football3d"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "lap>=0.5.13",
     "matplotlib>=3.11.1",
     "numpy>=2.5.3",
     "opencv-python>=5.0.0.93",
+    "ultralytics>=8.4.152",
 ]
+
+[tool.pyright]
+extraPaths = ["src/calib"]  # so the editor finds homography.py etc. when src/track imports them

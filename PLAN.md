@@ -250,7 +250,8 @@ with 4 px reprojection error still be badly wrong in 3D?
 
 ## Data formats (the contract between stages)
 
-`tracks.json`
+`tracks.json` = `data/tracks/<clip>.json`, written by `src/track/to_pitch.py`. `team` is `null` until
+teams are classified; `ball_px` is `null` in frames without a ball.
 ```json
 {
   "clip": "clip01",
