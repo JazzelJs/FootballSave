@@ -8,6 +8,16 @@ computer vision and 3D geometry, not to get a finished product as fast as possib
 
 The full roadmap is in `PLAN.md`. My notes are in `LEARNING_LOG.md`.
 
+## Resuming in a new chat (do this first)
+I often continue in a new chat or with a different model, with no memory of earlier chats.
+1. Read this file, then **`PLAN.md` → "Current status"** (where we are, the exact next step,
+   known issues), then the last entry of `LEARNING_LOG.md`, then `git log --oneline -10`.
+2. Check the local-only files the next step needs still exist (list below) before relying on them.
+3. Tell me in 3–5 lines where we are and what's next, then continue. Don't redo finished work,
+   don't re-open decisions recorded in PLAN.md unless you have a measured reason.
+4. Keep "Current status" in `PLAN.md` up to date when a task finishes or a decision is made —
+   it's the handover note for the next chat.
+
 ## How you (Claude) should work with me
 
 ### 1. Teach, don't just build
@@ -46,6 +56,21 @@ When I say "wrap up": ask me to explain, in my own words, what I learned today a
 one thing I'm still confused about. Help me append it to `LEARNING_LOG.md`.
 Don't write the explanation for me — correct it if it's wrong.
 
+### 6. What works with me (observed over the first sessions)
+- My answers are short and often half right ("because the camera changes speed"). Say what's
+  right, then ask ONE follow-up for the missing "why". Don't pile up several open questions.
+- Concrete numbers land best: a real box from our clip followed step by step through the maths,
+  a small table, an everyday analogy (km at 12:30 between km 0 at 12:00 and km 100 at 13:00).
+- I want to SEE results: send pictures/videos (crops with the problem marked, side-by-side
+  comparisons, the minimap), not only tables.
+- Plain, simple wording. Short answers. Explain jargon the first time (e.g. NMS, re-ID).
+- I often say "fix it for me" / "do it for me" on [YOU] tasks: remind me once (rule 1), and if
+  I insist, do it, then walk through every line.
+- I sometimes skip questions to keep moving ("skip those, continue"): fine, note them in
+  PLAN.md → Current status as optional, don't block on them.
+- When I ask "is X better?", give the honest trade-off and a recommendation, and say how we'd
+  measure it — I accept "we can't know without testing".
+
 ## My environment
 - MacBook with Apple Silicon. No NVIDIA GPU, no CUDA.
 - PyTorch GPU on Mac = `device="mps"`. Ultralytics YOLO supports this.
@@ -54,7 +79,42 @@ Don't write the explanation for me — correct it if it's wrong.
   Kaggle notebook in `notebooks/colab/` or `notebooks/kaggle/` that runs the model and
   exports results to files.
 - Heavy model → Colab/Kaggle → export JSON/NPZ → everything else runs locally.
-- Python env: `uv`. Video tools: `ffmpeg` (Homebrew).
+- **I prefer Kaggle over Colab.** Done so far: PnLCalib on clip04 — Kaggle dataset
+  `jazzeljs/clip04-data-football` (= `data/clip04_frames.zip`), notebook imported from
+  `notebooks/kaggle/pnlcalib_clip04.ipynb`, GPU "T4 x2", ~217 s for 337 frames. Kaggle outputs
+  vanish when a draft session stops: download them before closing.
+- Python env: `uv` (Python 3.12). Video tools: `ffmpeg` (Homebrew).
+- YOLO / tracking run locally: Ultralytics with `device="mps"`. The trackers need the `lap`
+  package (already added; Ultralytics' own auto-install doesn't work inside a uv env).
+- **Downloads:** I download files myself and move them into the project (e.g. `data/models/`).
+  Give me the link, the size and the target folder. Don't look in `~/Downloads` or other
+  personal folders — only inside this repo.
+
+## Local-only files (gitignored, can't be pulled from GitHub)
+| Path | What | How to get it back |
+|---|---|---|
+| `data/clips/*.mp4`, `data/frames/<clip>/` | the 7 clips and their frames | `src/extract_frames.sh` with the source video + times in `data/clips/README.md` |
+| `data/clip04_frames.zip` | clip04 frames zipped for Kaggle | zip `data/frames/clip04/` |
+| `data/pnlcalib/pnlcalib_raw_clip04.json` | PnLCalib output for clip04 | rerun the Kaggle notebook (~4 min) |
+| `data/camera/clip04.json` | H per frame (camera.json) | `uv run python src/calib/export_camera.py clip04` |
+| `data/models/football-player-detection-v9.pt` | Roboflow football detector (130 MB) | download by hand, see PLAN.md → Resources |
+| `data/models/yolo26m.pt` | general YOLO (compared, not used) | downloads itself |
+| `data/track/*.json` | raw boxes per detector/tracker | `src/track/detect_track.py` |
+| `data/tracks/clip04.json` | tracks.json | `src/track/to_pitch.py clip04` |
+| `data/soccernet/<clip>/` | SoccerNet GSR clips (frames + labels), SNGS-028/043/033 | `src/track/fetch_soccernet.py <clip>` |
+| `data/soccernet_frames.zip` | SNGS-028 + SNGS-043 frames zipped for Kaggle (344 MB) | `cd data/soccernet && zip -0 -r ../soccernet_frames.zip SNGS-028/img1 SNGS-043/img1` |
+| `data/kth/sequence2/` | KTH Football II, one sequence (Stage 4) | see PLAN.md → Resources |
+| `outputs/` | pictures and videos | rerun the script that made them |
+
+## Code layout
+- `src/calib/` — Stage 1 (calibration). Scripts import each other by plain name
+  (`from homography import project`): Python puts a script's own folder on the import path.
+- `src/track/` — Stage 2. They add `src/calib` to `sys.path` to reuse Stage 1 code;
+  `[tool.pyright] extraPaths = ["src/calib"]` in `pyproject.toml` makes the editor find it too.
+- Every script has a `Usage:` line at the top and is run from the repo root with
+  `uv run python src/<folder>/<script>.py …`. The full pipeline order is in PLAN.md → Current status.
+- Reuse what exists before writing new code: e.g. `project(H, pts)` in `src/calib/homography.py`
+  applies any homography (with `inv(H)` it turns pixels into meters).
 
 ## Project conventions
 - **Pitch coordinate frame (meters):** origin = center of the goal line of the goal being

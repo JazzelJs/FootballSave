@@ -8,6 +8,106 @@ Rule of thumb: if a stage takes more than ~2x the estimate, stop and ask Claude
 
 ---
 
+## Current status (updated 2026-09-16) — read this first in a new chat
+
+**Where we are:** Stage 0 ✅ · Stage 1 ✅ · **Stage 2 in progress.** Checkpoint half 1 (minimap on
+clip04) ✅. Checkpoint half 2 (position error in meters vs SoccerNet ground truth): part **(A)
+camera only ✅**, part **(B) full pipeline = next**. Clips: **clip04** (our match, no ground truth)
+and the SoccerNet GSR clips **SNGS-028** (shot off target) + **SNGS-043** (goal). Everything up to
+here is committed and pushed to GitHub (JazzelJs/FootballSave, branch `main`): see `git log`.
+
+**What happened on 2026-09-15/16 (not in `LEARNING_LOG.md` yet):**
+- Downloaded SoccerNet GSR clips with `src/track/fetch_soccernet.py` (reads one clip out of the
+  11.2 GB `valid.zip` on Hugging Face with byte-range requests, ~150–240 MB per clip). Picked
+  028 + 043 by their event (`action_class` in each clip's labels). Both attack SoccerNet's right goal.
+- Made `pitch_to_soccernet(xy, goal)` handle both ends: `GOAL_SIDE[clip]` in
+  `src/calib/compare_pnl.py` (I wrote the right-goal branch: X = 52.5 − y, Y = −x). Checked on a
+  picture (`outputs/axes_SNGS-033_00400.jpg`): +x = keeper's right = far touchline. ✅
+- PnLCalib on Kaggle (`notebooks/kaggle/pnlcalib_soccernet.ipynb`, ~7.5 min per clip) →
+  `data/camera/SNGS-0xx.json`. SNGS-028: 696/750 frames (fails 99–123 and 236–264; the labels show
+  3.2 visible pitch lines there vs 8.8 on good frames — my "few lines" prediction was right).
+  SNGS-043: 750/750. A few frames in both get a camera that is badly wrong (see below).
+- **(A) camera-only error:** `uv run python src/track/eval_soccernet.py <clip>` = SoccerNet's own
+  (perfect) boxes → foot pixel → OUR H → meters, vs the true meters. Detection/tracking play no part.
+  | | SNGS-028 | SNGS-043 |
+  |---|---|---|
+  | **median** | **0.57 m** | **0.55 m** |
+  | 95% | 3.18 m | 1.43 m |
+  | labels' own wobble (median) | 0.17 m | 0.19 m |
+  | mean | 3389 m ⚠️ | 1.53 m |
+  The mean is useless: a few broken-camera frames (028: 265–276, 97; 043: 530, 397–398, 535)
+  throw feet thousands of meters. Use the median / 95%, and deal with broken frames in (B).
+  *(Claude wrote `camera_errors` (3 lines) on my request, short on time: walk me through it.)*
+
+**Start the next session with:**
+1. **Wrap-up** for 2026-09-15/16 (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS, *where*
+   vs *who*, foot point → meters, wobble, SoccerNet ground truth, goal side, camera-only error.
+   Also walk me through `camera_errors` line by line.
+2. **(B) full pipeline on SNGS-028 + SNGS-043:** [CLAUDE] make `detect_track.py`, `to_pitch.py`
+   (and `minimap.py`) work on SoccerNet clips: frames are `data/soccernet/<clip>/img1/000001.jpg`
+   (6 digits, **start at 1**, clip04 is 5 digits from 0), `FPS = 25` (clip04 = 49.95), no clicks.
+   Then [YOU] matching per frame: our dots ↔ true players (nearest within a few meters, one-to-one),
+   error in meters + how many true players we missed / extra dots. (B) − (A) = what detection +
+   tracking add on top of the camera.
+3. Decide how to handle broken-camera frames (drop frames whose camera jumps? interpolate from
+   neighbours like Stage 1?). Then smoothing + joining track pieces, measured with (B).
+
+**Pipeline for a clip, as it runs today** (all from the repo root, all local on the Mac):
+1. Frames: `src/extract_frames.sh "<source video>" clip04 00:02:09 00:02:15.74` →
+   `data/frames/clip04/00000.jpg …` (source video + times in `data/clips/README.md`).
+2. Camera per frame: PnLCalib on Kaggle (`notebooks/kaggle/pnlcalib_clip04.ipynb`) →
+   `data/pnlcalib/pnlcalib_raw_clip04.json` → `uv run python src/calib/export_camera.py clip04` →
+   `data/camera/clip04.json`. Checked against my clicks with `src/calib/compare_pnl.py clip04`.
+3. Detection + tracking: `uv run python src/track/detect_track.py clip04` (~1 min on MPS) →
+   `data/track/clip04_football-player-detection-v9_botsort.json` (raw boxes, pixels).
+4. Feet → meters: `uv run python src/track/to_pitch.py clip04` → `data/tracks/clip04.json`
+   (= `tracks.json`), prints check 1 (clicks → meters) and check 2 (top speed per ID).
+5. Minimap: `uv run python src/track/minimap.py clip04` → `outputs/minimap_clip04.mp4`.
+   Boxes-only video for comparing detectors/trackers: `src/track/draw_tracks.py <raw json>`.
+
+**SoccerNet GSR clip (ground truth), as it runs today:**
+1. `uv run python src/track/fetch_soccernet.py` (list clips) → `… fetch_soccernet.py SNGS-028` →
+   `data/soccernet/SNGS-028/img1/000001.jpg …` + `Labels-GameState.json`. Add the clip to
+   `GOAL_SIDE` in `src/calib/compare_pnl.py`.
+2. Zip `<clip>/img1` → Kaggle dataset → `notebooks/kaggle/pnlcalib_soccernet.ipynb` →
+   `data/pnlcalib/pnlcalib_raw_<clip>.json` → `uv run python src/calib/export_camera.py SNGS-028`.
+3. `uv run python src/track/eval_soccernet.py SNGS-028` → (A) camera-only error. Steps 3–5 of the
+   clip pipeline above don't run on SoccerNet clips yet (frame names, fps).
+
+**Known issues, parked on purpose (and where each one gets fixed):**
+- **Track IDs are still not one-per-player:** 24 IDs for ~20 people on clip04. Causes: extra
+  boxes where two players overlap (#113, #171, #19, #265 — #265 "runs" 12.9 m/s), and the
+  goalkeeper lost at frame 228 → back as #250 at 262. Longer tracker memory and appearance re-ID
+  did NOT help (tested). Planned fix = "join track pieces in meters" (Stage 2 → Build), measured
+  against SoccerNet.
+- **Wobble:** 0.17 m per dot on average (95% under 0.46 m, max 1.49 m). Split: camera part
+  (all dots move together, PnLCalib) 0.10 m, box part (each dot alone) 0.14 m, all big jumps are
+  boxes. Fixes: smoothing per track (Stage 2, measured vs SoccerNet), ankles instead of box
+  bottom (Stage 4), steadier camera (before Stage 5).
+- **PnLCalib camera "moves" ~8 m while zooming** (zoom vs distance trade-off). Fix with one fixed
+  camera position per clip, only pan/tilt/zoom per frame — before Stage 5.
+- **Class labels of the football detector are unreliable on our match:** the referee is called
+  "player" 97% of the time, a Barcelona player "referee" 90 times, the goalkeeper right only
+  about half the time. Use it for *where*, not *who*. `team` in `tracks.json` is `null` →
+  team classification is still needed before Stage 3 (team colours).
+- **Ball:** 2–4 "ball" boxes in 255 of 337 frames (spare balls by the ad boards, false boxes),
+  so "ball found in 296 frames" is too optimistic. `ball_px` = most confident box. Stage 5.
+- **`MIN_CONF = 0.5`** in `src/track/to_pitch.py` (drop person tracks with a lower mean YOLO
+  confidence) was picked on clip04 alone: junk 0.20–0.43, real players ≥ 0.60. Re-check the gap
+  on other clips/recordings.
+- **Touchlines** on the minimap assume a 68 m wide pitch (±34 m): drawing only, never measured.
+- ~~clip04-only `pitch_to_soccernet`~~ Fixed 2026-09-15: `GOAL_SIDE[clip]` in `compare_pnl.py`
+  ("left"/"right" = SoccerNet X = ∓52.5), checked on SNGS-033 frame 400 with the label positions
+  (`outputs/axes_SNGS-033_00400.jpg`). A new clip needs its line in `GOAL_SIDE`.
+- **Questions I skipped on 2026-09-15/16 (optional):** where on a pitch does the camera see the
+  fewest lines? Will (A) be bigger or smaller than clip04's 0.35 m, and why? Why can't
+  `rep_err_px` alone be trusted? Why does the right goal put the keeper's right at −Y?
+- **Questions I skipped (optional to revisit):** is the worst check-1 point (0.98 m) far from
+  the camera or near, and why? What is #265 at 12.9 m/s around frame 325? How far behind a player
+  does a knee-height box put him (head at 1.8 m → 6.6 m behind)?
+
+---
+
 ## Stage 0 — Setup and choosing clips  (~1 session)
 
 **Learn**
@@ -102,22 +202,57 @@ is 1 px of click error worth more meters on the far side of the box?
 - Why the bottom-center of a bounding box is only an approximation of the feet.
 
 **Build**
-- [CLAUDE] Run Ultralytics YOLO + ByteTrack locally with `device="mps"`, save raw boxes.
-- [YOU] Foot point = bottom-center of each box → pitch meters using Stage 1 H.
-- [YOU] Write `tracks.json` (format below).
-- [CLAUDE] 2D minimap video (top-down pitch with dots) next to the original frame.
-- [YOU] Download one SoccerNet Game State Reconstruction (GSR) validation clip (moved from
-  Stage 0). Ground-truth player positions in meters, from another match and stadium.
-  Check the download size first (the downloader fetches a whole split). Watch out: 25 fps,
-  origin at the centre spot (convert to our frame), and a moving camera, so pick a steady
-  5–10 s stretch or use the Stage 1 moving-camera method to get H per frame.
+- ~~[CLAUDE] Run Ultralytics YOLO + ByteTrack locally with `device="mps"`, save raw boxes.~~ Done
+  on clip04: `src/track/detect_track.py` (needs `ultralytics` + `lap`, both in `pyproject.toml`).
+  What we tried, all on clip04 (337 frames), numbers = different person IDs (~20 real people):
+  | Detector | Tracker | Person IDs | Ball found | Notes |
+  |---|---|---|---|---|
+  | `yolo26m.pt` (COCO "person") | ByteTrack | 48 | 61 | finds photographers/staff by the pitch |
+  | Roboflow `football-player-detection-v9.pt` | ByteTrack | 85 → **32** | 274 | 85 until `agnostic_nms=True`: it put a "player" AND a "goalkeeper" box on the same person in 171/337 frames |
+  | same | ByteTrack, `track_buffer` 30 → 150 | 32 | 274 | output identical: lost players don't come back where the tracker predicts |
+  | same | **BoT-SORT** (camera-motion compensation) | 32 | 296 | **chosen** (default in the script) |
+  | same | BoT-SORT + re-ID (appearance) | 33 | 301 | teammates wear the same kit |
+  The ~12 IDs that start mid-picture appear at the same frames with every tracker → they come from
+  the detector's boxes, not the tracker. Roboflow model: YOLOv8x, fine-tuned 100 epochs at 1280 px
+  on Bundesliga broadcast frames; classes `ball, goalkeeper, player, referee`; ~60 s for 337 frames.
+- ~~[YOU] Foot point = bottom-center of each box → pitch meters using Stage 1 H.~~ Done:
+  `foot_point` + `pixels_to_meters` (= `project(inv(H), pixels)`) in `src/track/to_pitch.py`.
+  Check 1 (my 169 clicked pitch points on 14 frames → meters): **0.35 m mean, 0.98 m worst.**
+  Check 2 (top speed per ID, every 10th frame): real tracks 2.9–10.4 m/s.
+- ~~[YOU] Write `tracks.json` (format below).~~ Done: `frame_entry` in `src/track/to_pitch.py` →
+  `data/tracks/clip04.json`. Tracks with mean confidence < 0.5 are dropped (5 IDs = a pile of
+  towels by the goal post, 1 = a steward 7 m behind the goal, 2 tiny blips) → 24 person IDs.
+- ~~[CLAUDE] 2D minimap video (top-down pitch with dots) next to the original frame.~~ Done:
+  `src/track/minimap.py` → `outputs/minimap_clip04.mp4` (colour per ID, 1 s tail per dot).
+  I watched it: positions look right, the jitter is clearly visible (measured: see Current status).
+- ~~[YOU] Download one SoccerNet GSR validation clip.~~ Done 2026-09-15 with
+  `src/track/fetch_soccernet.py` (Hugging Face `SoccerNet/SN-GSR-2025`, `valid.zip` = 11.2 GB, so
+  the script reads only one clip's bytes out of it, ~150–240 MB per clip). 58 clips, each 750
+  frames (30 s, 25 fps) + `Labels-GameState.json`; the event per clip is in the labels' `info`.
+  Chosen: **SNGS-028** (shot off target at frame ~388) and **SNGS-043** (goal at ~619). SNGS-033
+  (foul, first try) is downloaded too but not used. Labels: per person `bbox_image` (px) +
+  `bbox_pitch` (SoccerNet meters, origin centre spot, +Y = near side), pitch lines per frame,
+  **no camera parameters** → PnLCalib on Kaggle. Whole 30 s, not a steady stretch: PnLCalib gives
+  a camera per frame, so report the error per part of the clip instead.
 - [YOU] Evaluate on the SoccerNet GSR clip: match your players to ground truth and
-  compute mean position error in meters. Look at the worst cases and say WHY they're bad.
+  compute mean position error in meters. **(A) camera only done** (`src/track/eval_soccernet.py`,
+  median 0.57 / 0.55 m on SNGS-028 / 043, see Current status); **(B) full pipeline next.** Look at the worst cases and say WHY they're bad.
+  To run our pipeline on the GSR clip it needs: frames → camera per frame (check whether the GSR
+  labels include camera parameters or only pitch lines; otherwise PnLCalib on Kaggle) → `detect_track.py` → `to_pitch.py`. `to_pitch.py`,
+  `minimap.py` and `export_camera.py` currently hard-code clip04 paths / its goal side.
+- [YOU] Once the error number exists, try the two fixes and keep what the number says helps:
+  (a) **smoothing** each track's positions over ~0.2–0.3 s (try a few window sizes; too long
+  rounds off real sharp turns), (b) **joining track pieces in meters**: a track that ends and
+  another that starts close by (in meters, not pixels — the camera pans) a few frames later =
+  the same player. Not done yet on purpose: without ground truth we'd only be tuning by eye.
+- [YOU, needed before Stage 3] Team for each track (`team` is `null` now). The detector's
+  classes can't be trusted for this (see Current status). Idea: shirt colour of the torso
+  part of each box, clustered into 2 teams + referee/goalkeepers.
 - [TOGETHER, optional] Run the full sn-gamestate baseline in Colab on the same GSR clip
   and compare with your simpler pipeline. Where does the baseline win, and why?
 
 **Checkpoint**
-- Minimap video looks right.
+- ~~Minimap video looks right.~~ Done on clip04 (2026-09-15), jitter noted and measured.
 - A measured number: mean position error on the GSR clip, e.g. "1.4 m, worst 4 m at
   frame 212 because of occlusion".
 
@@ -270,6 +405,12 @@ teams are classified; `ball_px` is `null` in frames without a ball.
 pixels, `H[2][2] = 1`), `pnl_rep_err_px` (PnLCalib's self-reported error). Frames without a camera are
 left out. Written by `src/calib/export_camera.py`. Full camera (K, R, t) gets added in Stage 5.
 
+Raw tracking = `data/track/<clip>_<model name>_<tracker name>.json`, written by
+`src/track/detect_track.py`. Pixels, straight from YOLO + tracker, before any filtering:
+`{"clip", "model", "tracker", "frames": [{"frame": 0, "boxes": [{"id": 3, "cls": "player",
+"conf": 0.91, "xyxy": [x1, y1, x2, y2]}]}]}`. `id` is only stable until an ID switch; a ball track
+can carry a person `cls` for a few frames (`to_pitch.py` treats any ID that was ever "ball" as ball).
+
 `pose_<id>.npz` — per frame: SMPL `global_orient` (3), `body_pose` (69), `betas` (10),
 `frame` index.
 
@@ -290,7 +431,9 @@ the pitch frame when loaded — never stored in its original frame.
 
 | Resource | What's in it | Used in | Size | Notes |
 |---|---|---|---|---|
-| SoccerNet GSR (validation clip) | Broadcast clips + player positions in meters | 2 | whole split (check size) | Ground truth for position error |
+| SoccerNet GSR (validation clip) | Broadcast clips + player positions in meters | 2 | whole split (check size) | Ground truth for position error. **Next download** |
+| Roboflow `football-player-detection-v9.pt` ([roboflow/sports](https://github.com/roboflow/sports/tree/main/examples/soccer), link in `examples/soccer/setup.sh`) | YOLOv8x fine-tuned on Bundesliga broadcast: ball, goalkeeper, player, referee | 2 (in use) | 130 MB | **Downloaded** to `data/models/` (by me, by hand, from Google Drive id `17PXFNlx-jI7VjVo_vQnB1sONjRyvoB-q`). sha256 `75b09c37…fffaf`. AGPL (Ultralytics). Same repo has `football-ball-detection.pt` (ball, Stage 5 option) and `football-pitch-detection.pt` (pitch keypoints) |
+| Ultralytics `yolo26m.pt` | General COCO detector ("person", "sports ball") | 2 (compared, not used) | 42 MB | Downloads itself into `data/models/` |
 | [SoccerNet-v3D](https://github.com/mguti97/SoccerNet-v3D) — `SNv3D.csv` | Per image: full camera (K,R,t), 2D ball box, triangulated 3D ball | 1 stretch, 5 | 3.6 MB | No code in the repo, only data + weights (release v1.0.0). Paper: arXiv 2504.10106 |
 | SoccerNet-v3D — `yolo-sn-ball-opt.pt` | YOLOv11 ball detector, fine-tuned on broadcast | 5 | 49 MB | GPL-2.0. `*.pt` is gitignored |
 | [KTH Multiview Football II](https://www.csc.kth.se/cvap/cvg/?page=footballdataset2) — 3D part | 3 synced views, 800 frames, 14-joint 3D pose GT, camera per frame | 4, 5 stretch | ~200–250 MB per sequence | Academic use only. 2013, close-up footage. Download one sequence only |
@@ -310,6 +453,7 @@ GT quality: reprojection median 5.7 px, but the **left leg/wrist** is off by up 
 ## Things NOT to do (yet)
 - Don't download Stage 4/5 datasets before you reach those stages.
 - Don't start with 40-second clips. 5–10 s.
-- Don't fight CUDA installs on the Mac. Colab.
+- Don't fight CUDA installs on the Mac. Kaggle (my choice) or Colab.
+- Don't tune a fix (smoothing, joining, thresholds) by how the video looks alone — measure it.
 - Don't add VR, apps, or the full goalkeeper product before Stage 3's decision gate.
 - Don't trust any output you haven't reprojected onto the video.

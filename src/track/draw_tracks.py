@@ -1,6 +1,6 @@
 """Draw tracked boxes + IDs on every frame and save a video, to check tracking by eye.
 
-Usage: uv run python src/track/draw_tracks.py data/track/clip04_raw.json
+Usage: uv run python src/track/draw_tracks.py data/track/clip04_football-player-detection-v9_botsort.json
 Writes outputs/<json name>.mp4. Each ID gets its own colour, so an ID switch shows up as a
 player whose box suddenly changes colour and number.
 """
