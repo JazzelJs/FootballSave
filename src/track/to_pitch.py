@@ -1,6 +1,7 @@
 """Stage 2: the foot pixel of each tracked box -> pitch meters, with inv(H) from Stage 1.
 
-Usage: uv run python src/track/to_pitch.py clip04   (or SNGS-028)
+Usage: uv run python src/track/to_pitch.py clip04 [smoothing window in frames]   (or SNGS-028)
+  Without the window it smooths over SMOOTH_S seconds; 0 turns smoothing off.
 Reads data/track/<clip>_football-player-detection-v9_botsort.json and data/camera/<clip>.json.
 Writes data/tracks/<clip>.json (tracks.json, format in PLAN.md -> Data formats).
 Prints two checks:
@@ -24,6 +25,63 @@ from clips import fps  # noqa: E402  (same folder)
 # towels by the post (5 IDs) and a steward behind the goal, all 0.20-0.43, while every real player
 # is 0.60 or more. Picked on clip04 alone: check the gap again on other clips.
 MIN_CONF = 0.5
+# Smoothing window per track, in SECONDS (frames would mean different amounts of time per clip:
+# SoccerNet runs at 25 fps, clip04 at 49.95). Measured on SNGS-028 + SNGS-043 against the ground
+# truth: the position error keeps falling up to ~1 s, and at 0.84 s our players' 95% speed (5.5 m/s)
+# matches the true players' (5.3 m/s). Longer flattens real turns: at 2 s the error gets worse again.
+SMOOTH_S = 0.84
+
+
+def smooth_tracks(frames, window):
+    """Average each track's positions over `window` frames, to take the wobble out.
+
+    frames: the list that goes into tracks.json: [{"frame": 0, "players": [{"id", "team", "x", "y",
+            "visible"}, ...], "ball_px": ...}, ...]. Frame numbers go up but can have gaps.
+    window: how many frames to average over, centred on each point (odd numbers are easiest: 5 means
+            the point itself plus 2 before and 2 after). window <= 1 means no smoothing.
+    Returns: frames with the x and y of every player replaced by the average of that SAME id's
+             positions in the surrounding frames. Don't mix two ids together, and don't average
+             across a long gap in a track (a track that stops at frame 10 and comes back at 200).
+    Careful: the ends of a track have no neighbours on one side.
+    """
+    frames = [dict(fr, players=[dict(p) for p in fr["players"]]) for fr in frames]  # deep copy
+    if window <= 1:
+        return frames
+    half = window // 2
+    tracks = {}  # id -> list of (frame, x, y, the player dict itself: writing into it updates `frames`)
+    for fr in frames:
+        for p in fr["players"]:
+            tracks.setdefault(p["id"], []).append((fr["frame"], p["x"], p["y"], p))
+    for tid, t in tracks.items():
+        pos = np.array([row[:3] for row in t])  # (frame, x, y) as it was BEFORE smoothing
+        for i, (f, x, y, p) in enumerate(t):
+            # Find the surrounding frames of this same id, within the window.
+            # Don't average across a long gap in a track (a track that stops at frame 10 and comes back at 200).
+            start = max(0, i - half)
+            while start < i and pos[start, 0] < f - half:
+                start += 1
+            end = min(len(t), i + half + 1)
+            while end > i + 1 and pos[end - 1, 0] > f + half:
+                end -= 1
+            if end - start > 1:  # otherwise no neighbours to average with
+                p["x"] = float(np.mean(pos[start:end, 1]))
+                p["y"] = float(np.mean(pos[start:end, 2]))
+    return frames
+
+
+def check_smooth_tracks():
+    """Two cases with a known answer, run before smoothing anything."""
+    # A player running straight at a steady speed: a centred average changes nothing in the middle.
+    straight = [{"frame": f, "players": [{"id": 1, "team": None, "x": 0.5 * f, "y": 2.0, "visible": True}],
+                 "ball_px": None} for f in range(11)]
+    out = smooth_tracks([dict(fr, players=[dict(p) for p in fr["players"]]) for fr in straight], 5)
+    mid = [p for fr in out[3:8] for p in fr["players"]]
+    assert np.allclose([p["x"] for p in mid], [0.5 * f for f in range(3, 8)]), "a straight run must survive smoothing"
+    # One point knocked 1 m sideways: smoothing must pull it back towards the line.
+    bumpy = [dict(fr, players=[dict(p) for p in fr["players"]]) for fr in straight]
+    bumpy[5]["players"][0]["y"] = 3.0
+    out = smooth_tracks(bumpy, 5)
+    assert abs(out[5]["players"][0]["y"] - 2.0) < 0.5, "a single bad point must be pulled back"
 
 
 def foot_point(xyxy):
@@ -78,7 +136,8 @@ def frame_entry(frame, boxes, H):
     return {"frame": int(frame), "players": players, "ball_px": ball_px}
 
 
-def main(clip):
+def main(clip, window=None):
+    window = round(SMOOTH_S * fps(clip)) if window is None else int(window)  # 0 or 1 = no smoothing
     raw = json.load(open(ROOT / "data" / "track" / f"{clip}_football-player-detection-v9_botsort.json"))
     cams = {c["frame"]: np.array(c["H"])
             for c in json.load(open(ROOT / "data" / "camera" / f"{clip}.json"))["frames"]}
@@ -104,6 +163,15 @@ def main(clip):
     for f in raw["frames"]:
         boxes = [dict(b, cls="ball") if b["id"] in ball_ids else b for b in f["boxes"] if b["id"] not in unsure]
         frames.append(frame_entry(f["frame"], boxes, cams.get(f["frame"])))
+    if int(window) > 1:
+        smoothed = smooth_tracks(frames, int(window))
+        if smoothed is None:
+            print("smooth_tracks isn't written yet (TODO(human)): saving the raw positions")
+        else:
+            check_smooth_tracks()
+            frames = smoothed
+            print(f"smoothed each track over {window} frames ({int(window) / fps(clip):.2f} s)")
+
     out = ROOT / "data" / "tracks" / f"{clip}.json"
     out.parent.mkdir(exist_ok=True)
     FPS = fps(clip)
@@ -130,4 +198,4 @@ def main(clip):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(*sys.argv[1:])

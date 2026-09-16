@@ -94,8 +94,23 @@ here is committed and pushed to GitHub (JazzelJs/FootballSave, branch `main`): s
    (B)'s max is exactly 3.00 m: pairs over `MAX_DIST` become missed + extra, so (B) vs (A) isn't a
    fair comparison of the tails — open question to me. **Next = [YOU] look at the worst /
    most-missed frames on the minimap and say WHY** (checkpoint), then commit.
-3. ~~Decide how to handle broken-camera frames~~ filled in from neighbours (above). Then smoothing +
-   joining track pieces, measured with (B).
+3. ~~Decide how to handle broken-camera frames~~ filled in from neighbours (above).
+4. **Smoothing done 2026-09-16** (I wrote `smooth_tracks` in `to_pitch.py`; Claude fixed how it wrote
+   the result back: keep the player dict itself instead of searching the list with `frames.index`).
+   Window is `SMOOTH_S` = 0.84 s, in seconds not frames (clip04 runs at 49.95 fps, SoccerNet at 25).
+   | (B) median / 95% | SNGS-028 | SNGS-043 |
+   |---|---|---|
+   | no smoothing | 0.77 / 2.33 m | 0.56 / 1.47 m |
+   | **0.84 s (21 frames)** | **0.70 / 2.14 m** | **0.48 / 1.14 m** |
+   | 1.24 s | 0.72 / 2.21 m (worse) | 0.47 / 1.12 m |
+   | 2.04 s | — | 0.49 / 1.28 m (worse) |
+   Picked with two numbers that agree: (B) stops improving around 1 s, and our 95% player speed
+   (5.5 m/s at 0.84 s) matches the true players' 5.3 m/s, where unsmoothed we "measured" 10.5 m/s.
+   Misses also drop (1263 → 1140 on 043): a smoothed dot lands inside the 3 m matching limit more often.
+5. **Next: joining track pieces.** (B) can't judge it — it measures *where*, not *who*, so a dot in
+   the right place scores the same under any ID. Needs an identity number first ([CLAUDE]: ID
+   switches + how many of our IDs one true player gets; the labels have a `track_id` per person,
+   24 real people in SNGS-043 vs our 202 IDs).
 
 **Pipeline for a clip, as it runs today** (all from the repo root, all local on the Mac):
 1. Frames: `src/extract_frames.sh "<source video>" clip04 00:02:09 00:02:15.74` →
