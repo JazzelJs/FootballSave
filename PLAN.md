@@ -68,11 +68,8 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   | max | 12.9 m (was 19.0 before `jumpy`) | 7.9 m (was 15.3) |
   | filled frames only, median | 2.64 m (long gaps, fast pan) | 0.57 m |
 
-**Start the next session with:**
-1. **Wrap-up** for 2026-09-15/16 (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS, *where*
-   vs *who*, foot point → meters, wobble, SoccerNet ground truth, goal side, camera-only error.
-   Also walk me through `camera_errors` line by line.
-2. **(B) full pipeline on SNGS-028 + SNGS-043:** ~~[CLAUDE] make `detect_track.py`, `to_pitch.py`,
+**The rest of 2026-09-16, in order (every step measured, all committed):**
+1. **(B) full pipeline on SNGS-028 + SNGS-043:** ~~[CLAUDE] make `detect_track.py`, `to_pitch.py`,
    `minimap.py` work on SoccerNet clips~~ done 2026-09-16: frame names + fps per clip live in
    `src/track/clips.py`; the minimap now shows the whole pitch and, on SoccerNet clips, the true
    players as white rings. SNGS-028: 258 track IDs (165 shorter than 10 frames), 10.7 people per
@@ -98,8 +95,8 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
    (B)'s max is exactly 3.00 m: pairs over `MAX_DIST` become missed + extra, so (B) vs (A) isn't a
    fair comparison of the tails — open question to me. **Next = [YOU] look at the worst /
    most-missed frames on the minimap and say WHY** (checkpoint), then commit.
-3. ~~Decide how to handle broken-camera frames~~ filled in from neighbours (above).
-4. **Smoothing done 2026-09-16** (I wrote `smooth_tracks` in `to_pitch.py`; Claude fixed how it wrote
+2. ~~Decide how to handle broken-camera frames~~ filled in from neighbours (above).
+3. **Smoothing done 2026-09-16** (I wrote `smooth_tracks` in `to_pitch.py`; Claude fixed how it wrote
    the result back: keep the player dict itself instead of searching the list with `frames.index`).
    Window is `SMOOTH_S` = 0.84 s, in seconds not frames (clip04 runs at 49.95 fps, SoccerNet at 25).
    | (B) median / 95% | SNGS-028 | SNGS-043 |
@@ -111,12 +108,12 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
    Picked with two numbers that agree: (B) stops improving around 1 s, and our 95% player speed
    (5.5 m/s at 0.84 s) matches the true players' 5.3 m/s, where unsmoothed we "measured" 10.5 m/s.
    Misses also drop (1263 → 1140 on 043): a smoothed dot lands inside the 3 m matching limit more often.
-5. **Identity number (C) added 2026-09-16** [CLAUDE], because (B) measures *where*, not *who*: a dot
+4. **Identity number (C) added 2026-09-16** [CLAUDE], because (B) measures *where*, not *who*: a dot
    in the right place scores the same under any ID. Follows each true player (the labels carry a
    `track_id`) and watches which of our IDs sits on them: fragments per player, ID switches, and
    **merged ids** (one of our IDs on several people) — that last one is the guard against joining too
    greedily, not (B), which joining cannot move at all.
-6. **Joining track pieces done 2026-09-16** (Claude wrote `join_tracks` in `to_pitch.py` on my
+5. **Joining track pieces done 2026-09-16** (Claude wrote `join_tracks` in `to_pitch.py` on my
    request, walked through line by line; knobs `JOIN_GAP_S` = 1.0 s, `JOIN_DIST` = 3.0 m).
    | | SNGS-028 | SNGS-043 | clip04 |
    |---|---|---|---|
@@ -129,7 +126,7 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
    the old ID carries on somewhere else, i.e. the tracker trades IDs between two players who are
    both on screen. Joining can only fix the other 31% (the old ID really ended, median gap 1 frame).
    Bigger settings (2 s / 5 m) buy little more (fragments 5.2 on 043) at the same merge risk.
-7. **Team colour done 2026-09-16** (Claude wrote `shirt_colour` + `assign_teams` in the new
+6. **Team colour done 2026-09-16** (Claude wrote `shirt_colour` + `assign_teams` in the new
    `src/track/teams.py` on my request, walked through line by line; I chose per-track over per-frame).
    Torso crop (25-55% of the box height, middle half of the width) -> drop grass pixels -> hue
    histogram (12 bins, saturation-weighted, smoothed around the circle) + median saturation and value
@@ -143,8 +140,19 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
    | goalkeepers called "other" | 100% | 20% | the keeper is "other" ✅ |
    Two traps Claude hit and left comments about: a black referee kit is dark, so "drop dark pixels as
    shadow" deleted the referee; and `hue` is uint8, so `hue * 12` wraps at 255 and put blue in red's bin.
-8. **Next: Stage 3** (3D viewer). Still open in Stage 2, when it matters: use the team colours to
-   refuse a join or a swap between two different kits (69% of ID switches are swaps).
+
+**Start the next session with:**
+1. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
+   *where* vs *who*, foot point → meters, wobble, goal side. 2026-09-16 has its `LEARNING_LOG.md`
+   entry; parts of it are Claude's wording and I should rewrite those in my own words.
+2. **Stage 3, the 3D viewer** (see the stage below). `tracks.json` has everything it needs:
+   positions in meters, ids that survive gaps, teams, and `box_px`.
+3. Open questions I haven't answered yet (no rush, they're small):
+   - (B)'s biggest error is exactly 3.00 m while (A)'s is 12.9 m. Why, and what does that do to
+     comparing (B) with (A)?
+   - If PnLCalib gave a perfect camera tomorrow, which file changes: `data/track/…` or `data/tracks/…`?
+4. Left in Stage 2 on purpose, to pick up when it matters: use the team colours to refuse a join or a
+   tracker hand-over between two different kits (69% of ID switches are swaps, which joining can't fix).
 
 **Pipeline for a clip, as it runs today** (all from the repo root, all local on the Mac):
 1. Frames: `src/extract_frames.sh "<source video>" clip04 00:02:09 00:02:15.74` →
@@ -155,8 +163,13 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
 3. Detection + tracking: `uv run python src/track/detect_track.py clip04` (~1 min on MPS) →
    `data/track/clip04_football-player-detection-v9_botsort.json` (raw boxes, pixels).
 4. Feet → meters: `uv run python src/track/to_pitch.py clip04` → `data/tracks/clip04.json`
-   (= `tracks.json`), prints check 1 (clicks → meters) and check 2 (top speed per ID).
-5. Minimap: `uv run python src/track/minimap.py clip04` → `outputs/minimap_clip04.mp4`.
+   (= `tracks.json`). Also smooths each track over `SMOOTH_S` = 0.84 s and joins track pieces
+   (`JOIN_GAP_S` = 1 s, `JOIN_DIST` = 3 m). Prints check 1 (clicks → meters) and check 2 (top speed
+   per ID). `to_pitch.py clip04 0` turns smoothing off, any other number = window in frames.
+5. Teams: `uv run python src/track/teams.py clip04` → fills `team` in the same `tracks.json`
+   ("A" / "B" / "other"). Run it after `to_pitch.py`, which resets `team` to null.
+6. Minimap: `uv run python src/track/minimap.py clip04` → `outputs/minimap_clip04.mp4` (dot = team,
+   trail = track id, white rings = ground truth on SoccerNet clips).
    Boxes-only video for comparing detectors/trackers: `src/track/draw_tracks.py <raw json>`.
 
 **SoccerNet GSR clip (ground truth), as it runs today:**
@@ -167,8 +180,9 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
    `data/pnlcalib/pnlcalib_raw_<clip>.json` → `uv run python src/calib/export_camera.py SNGS-028`.
 3. Steps 3–5 of the clip pipeline above work on SoccerNet clips too (`detect_track.py SNGS-028`
    ~3 min, `to_pitch.py SNGS-028`, `minimap.py SNGS-028` with the true players as white rings).
-4. `uv run python src/track/eval_soccernet.py SNGS-028` → (A) camera-only error, then (B) full
-   pipeline once `match_frame` is written.
+4. `uv run python src/track/eval_soccernet.py SNGS-028` → the four numbers: **(A)** camera only
+   (their perfect boxes through our H), **(B)** full pipeline (where our dots are, plus missed and
+   extra), **(C)** identity (our ids per real player, ID switches, merged ids), **(D)** teams.
 
 **Known issues, parked on purpose (and where each one gets fixed):**
 - **Track IDs are still not one-per-player:** 24 IDs for ~20 people on clip04. Causes: extra

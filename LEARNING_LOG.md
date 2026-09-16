@@ -112,3 +112,44 @@ The higher the body part, the farther back it lands: the head ends up meters beh
   tomorrow, which file changes, `data/track/…` or `data/tracks/…`?
 - **Next step:** smoothing each track and joining track pieces in meters, both measured against (B).
   The 2026-09-15 session (detection, tracking, ID switches, NMS) still owes its own entry.
+
+### 2026-09-16 (part 2) — Stage 2 finished: smoothing, joining, teams
+- **What I did:** Wrote `smooth_tracks` (Claude fixed how it wrote the result back). Decided the
+  window by measurement, decided to cut SNGS-043 at the goal (frame 634) for the miss rate, and
+  decided team colour should be per track, not per frame. Explained the worst frames from the minimap
+  videos. Asked Claude to write `join_tracks`, `shirt_colour` and `assign_teams`, and to walk me
+  through each line. Also had Claude read my other repo (Smart-Monitoring-System) to compare how that
+  one tracks people.
+- **What I learned (my own words where I said it, marked where it's Claude's wording):**
+  - Smoothing = replace each position with the average of its neighbours in time. The wobble is
+    random so it cancels; the player's real movement isn't random so it survives. Too long a window
+    flattens real turns.
+  - Frames 272–274: *"it zoomed in from further away, the lines still match"*. Claude's name for it:
+    the dolly zoom (the Vertigo shot). Near the visible lines the picture barely changes, far from
+    them the grass moves meters.
+  - Joining track pieces: a track that ends and another that starts nearby in **meters** (not pixels,
+    the camera pans) is the same player. Closest pairs first, skip the used ones — the same rule as
+    matching dots to players.
+  - *(Claude's wording, to rewrite in mine:)* (B) measures **where** a dot is, (C) measures **who** it
+    is. Joining can only move (C), because renaming never moves a dot. And 69% of our ID failures are
+    *swaps*, where the old id keeps living on another player, which joining can never fix.
+  - *(Claude's wording:)* Teams from shirt colour: hue survives shadow where RGB doesn't, hue is a
+    circle so use a histogram and let the bins wrap, and white/black kits have no hue at all, so
+    saturation and brightness have to carry them.
+  - My other project tracks people in two layers that never meet: BoT-SORT ids for line crossing
+    (enter/exit), and face embeddings in Redis for returning customers. Nothing links a track id to a
+    face, so it can't say *which* customer sat in which chair. Same lesson as (C) here.
+- **Numbers / results:**
+  - Smoothing, window 0.84 s: (B) median 0.77 → **0.70 m** (SNGS-028), 0.56 → **0.48 m** (SNGS-043).
+    Picked by two numbers agreeing: (B) flattens out around 1 s, and our 95% player speed
+    (5.5 m/s) matches the true players' 5.3 m/s — unsmoothed we "measured" 10.5 m/s.
+  - Joining, 1 s / 3 m: our ids 210 → **132** and 161 → **122**; ids per real player 8.3 → **6.1** and
+    6.4 → **5.5**; ID switches barely moved (375 → 359, 289 → 276) because most are swaps.
+  - Teams: **96%** (SNGS-028) and **89%** (SNGS-043) of outfield player dots right. Referees called
+    "other" 61% / 91%, goalkeepers 100% / 20%. On clip04 the keeper came out as "other" by colour alone.
+  - Stage 2 final: position **0.70 / 0.48 m** median, 17% / 7% of players missed, **6.1 / 5.5** ids per
+    real player, **96% / 89%** teams. (B) − (A) ≈ 0, so the error is the camera, not detection.
+- **Still confused about / not answered yet:** why (B)'s biggest error is exactly 3.00 m when (A)'s is
+  12.9 m, and what that does to comparing them. Whether `data/track/…` or `data/tracks/…` would change
+  if the camera were perfect.
+- **Next step:** Stage 3, the 3D viewer and the goalkeeper camera. The 2026-09-15 wrap-up is still owed.
