@@ -28,7 +28,11 @@ def interpolate_h(H_a, H_b, t):
     """
 
 
-    anchors = np.array([POINTS[n][:2] for n in POINTS])
+    # Anchors = grass that is in view: the pitch points under the lower half of each picture (1920x1080).
+    # The goal-area POINTS used to be the anchors, but when the camera looks up the pitch they land far
+    # off-screen or behind the camera, and blending those pixels is nonsense (SNGS-028 93-123: 24 m off).
+    view = np.array([[u, v] for u in (0, 480, 960, 1440, 1920) for v in (540, 810, 1080)], float)
+    anchors = np.vstack([project(np.linalg.inv(H_a), view), project(np.linalg.inv(H_b), view)])
     px_a = project(H_a, anchors)
     px_b = project(H_b, anchors)
     px_t = (1 - t) * px_a + t * px_b

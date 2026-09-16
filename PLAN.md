@@ -12,7 +12,8 @@ Rule of thumb: if a stage takes more than ~2x the estimate, stop and ask Claude
 
 **Where we are:** Stage 0 ✅ · Stage 1 ✅ · **Stage 2 in progress.** Checkpoint half 1 (minimap on
 clip04) ✅. Checkpoint half 2 (position error in meters vs SoccerNet ground truth): part **(A)
-camera only ✅**, part **(B) full pipeline = next**. Clips: **clip04** (our match, no ground truth)
+camera only ✅**, part **(B) full pipeline measured (0.77 / 0.56 m median), explaining the worst
+frames = next**. Clips: **clip04** (our match, no ground truth)
 and the SoccerNet GSR clips **SNGS-028** (shot off target) + **SNGS-043** (goal). Everything up to
 here is committed and pushed to GitHub (JazzelJs/FootballSave, branch `main`): see `git log`.
 
@@ -38,19 +39,63 @@ here is committed and pushed to GitHub (JazzelJs/FootballSave, branch `main`): s
   The mean is useless: a few broken-camera frames (028: 265–276, 97; 043: 530, 397–398, 535)
   throw feet thousands of meters. Use the median / 95%, and deal with broken frames in (B).
   *(Claude wrote `camera_errors` (3 lines) on my request, short on time: walk me through it.)*
+- **Broken / missing cameras are filled in from neighbours** (my choice, 2026-09-16). In
+  `export_camera.py`, a PnLCalib frame is "broken" if it failed, its own error is > 10 px (normal ~4)
+  or its focal length is < 1000 px (a view wider than ~90°, no broadcast camera does that). Those get
+  H from `h_at` between the good frames around them, `"filled": true` in camera.json. Flags 0 frames
+  on clip04, 64 on SNGS-028 (incl. the 54 failed ones), 11 on SNGS-043.
+  First try was 24 m off on 028's long gap (99–123): `interpolate_h` blended the goal-area POINTS,
+  which there sit 5,000–100,000 px off-screen or behind the camera. **Claude changed the anchors
+  in my `interpolate_h`** to grass that is in view (pitch points under the lower half of both
+  pictures) — the answer to its "does a point have to be visible in both frames?" question.
+  clip04's Stage 1 numbers didn't move (15.1 / 21.8 px). Tested alternative: blending the camera
+  itself (rotation, zoom, position) — 2.74 vs 3.73 m median on 99–123, equal on 1–2 s gaps; not
+  used (more code), keep in mind if long gaps matter.
+- **Second rule, `jumpy()` (added after I found frame 357):** a frame whose camera disagrees with the
+  neighbouring frames by more than `MAX_JUMP` = 5 m on the grass is filled in too. `broken()` misses
+  these: on SNGS-043 frame 357 PnLCalib's own error is 0.4 px (the *best* of its neighbourhood) with a
+  camera 25 m too close and zoomed out — proof that its self-reported error is not a test. All dots
+  shift together by 3.5 m there; per-frame the error went 3.70 → 0.42 m, frame 544 5.67 → 0.39 m.
+  Flags 0 frames on clip04, 5 on SNGS-028, 7 on SNGS-043 (a bad frame drags its 2 neighbours in).
+  | (A) camera only, after fill-in | SNGS-028 | SNGS-043 |
+  |---|---|---|
+  | frames with a camera | 750/750 (was 696) | 750/750 |
+  | median / 95% / mean | 0.61 / 3.63 / **1.09 m** (mean was 3389) | 0.54 / 1.26 / **0.62 m** (was 1.53) |
+  | max | 12.9 m (was 19.0 before `jumpy`) | 7.9 m (was 15.3) |
+  | filled frames only, median | 2.64 m (long gaps, fast pan) | 0.57 m |
 
 **Start the next session with:**
 1. **Wrap-up** for 2026-09-15/16 (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS, *where*
    vs *who*, foot point → meters, wobble, SoccerNet ground truth, goal side, camera-only error.
    Also walk me through `camera_errors` line by line.
-2. **(B) full pipeline on SNGS-028 + SNGS-043:** [CLAUDE] make `detect_track.py`, `to_pitch.py`
-   (and `minimap.py`) work on SoccerNet clips: frames are `data/soccernet/<clip>/img1/000001.jpg`
-   (6 digits, **start at 1**, clip04 is 5 digits from 0), `FPS = 25` (clip04 = 49.95), no clicks.
-   Then [YOU] matching per frame: our dots ↔ true players (nearest within a few meters, one-to-one),
-   error in meters + how many true players we missed / extra dots. (B) − (A) = what detection +
-   tracking add on top of the camera.
-3. Decide how to handle broken-camera frames (drop frames whose camera jumps? interpolate from
-   neighbours like Stage 1?). Then smoothing + joining track pieces, measured with (B).
+2. **(B) full pipeline on SNGS-028 + SNGS-043:** ~~[CLAUDE] make `detect_track.py`, `to_pitch.py`,
+   `minimap.py` work on SoccerNet clips~~ done 2026-09-16: frame names + fps per clip live in
+   `src/track/clips.py`; the minimap now shows the whole pitch and, on SoccerNet clips, the true
+   players as white rings. SNGS-028: 258 track IDs (165 shorter than 10 frames), 10.7 people per
+   frame, the same as the truth; `MIN_CONF` dropped 48 tracks. SNGS-043: 202 IDs, ball in only
+   18/750 frames. `match_frame` in `src/track/eval_soccernet.py`: greedy matching, closest pairs
+   first, skip used ones, pairs > `MAX_DIST` = 3 m don't count (my idea; I wrote the empty cases,
+   **Claude wrote the matching loop on my request, walked through line by line**). 4 self-checks
+   incl. the A/B frame where matching player by player steals a dot.
+   | | SNGS-028 | SNGS-043 |
+   |---|---|---|
+   | (A) camera only, median | 0.61 m | 0.54 m |
+   | **(B) full pipeline, median / 95%** | **0.77 / 2.33 m** | **0.56 / 1.47 m** |
+   | true players missed | 18% | 10% whole clip, **7% up to frame 634** |
+   | extra dots per frame | 1.7 | 0.9 |
+   | worst frames | 272–274, 106, 110 (all filled camera) | 540, 402, 533, 340, 146 |
+   | most missed frames | 100–114 (filled camera) | 707–711 (celebration only, after `jumpy`) |
+   **Frame 708 explained (me):** after the goal the players celebrate on the grass and the detector
+   finds 2 of 11 — it only knows players who are *playing*. Not occlusion: measured max overlap 0.15,
+   boxes 40–87 px wide, and only 2 raw boxes come out of YOLO (so not `MIN_CONF`, not the tracker).
+   SNGS-043 misses jump 7% → 33% after the goal; the median error doesn't move (a player we never
+   detect adds no error). My decision: report the football part too, `PLAY_END = {"SNGS-043": 634}`
+   in `eval_soccernet.py` prints a second "(B) to 634" line. SNGS-028 has no such jump (19% → 17%).
+   (B)'s max is exactly 3.00 m: pairs over `MAX_DIST` become missed + extra, so (B) vs (A) isn't a
+   fair comparison of the tails — open question to me. **Next = [YOU] look at the worst /
+   most-missed frames on the minimap and say WHY** (checkpoint), then commit.
+3. ~~Decide how to handle broken-camera frames~~ filled in from neighbours (above). Then smoothing +
+   joining track pieces, measured with (B).
 
 **Pipeline for a clip, as it runs today** (all from the repo root, all local on the Mac):
 1. Frames: `src/extract_frames.sh "<source video>" clip04 00:02:09 00:02:15.74` →
@@ -71,8 +116,10 @@ here is committed and pushed to GitHub (JazzelJs/FootballSave, branch `main`): s
    `GOAL_SIDE` in `src/calib/compare_pnl.py`.
 2. Zip `<clip>/img1` → Kaggle dataset → `notebooks/kaggle/pnlcalib_soccernet.ipynb` →
    `data/pnlcalib/pnlcalib_raw_<clip>.json` → `uv run python src/calib/export_camera.py SNGS-028`.
-3. `uv run python src/track/eval_soccernet.py SNGS-028` → (A) camera-only error. Steps 3–5 of the
-   clip pipeline above don't run on SoccerNet clips yet (frame names, fps).
+3. Steps 3–5 of the clip pipeline above work on SoccerNet clips too (`detect_track.py SNGS-028`
+   ~3 min, `to_pitch.py SNGS-028`, `minimap.py SNGS-028` with the true players as white rings).
+4. `uv run python src/track/eval_soccernet.py SNGS-028` → (A) camera-only error, then (B) full
+   pipeline once `match_frame` is written.
 
 **Known issues, parked on purpose (and where each one gets fixed):**
 - **Track IDs are still not one-per-player:** 24 IDs for ~20 people on clip04. Causes: extra
@@ -253,8 +300,21 @@ is 1 px of click error worth more meters on the far side of the box?
 
 **Checkpoint**
 - ~~Minimap video looks right.~~ Done on clip04 (2026-09-15), jitter noted and measured.
-- A measured number: mean position error on the GSR clip, e.g. "1.4 m, worst 4 m at
-  frame 212 because of occlusion".
+- ~~A measured number: mean position error on the GSR clip, e.g. "1.4 m, worst 4 m at
+  frame 212 because of occlusion".~~ Done 2026-09-16: **median 0.77 m on SNGS-028, 0.56 m on
+  SNGS-043** (95%: 2.33 / 1.47 m), 18% / 7% of true players missed. Why the worst frames are bad:
+  - **SNGS-043 708–711** (9 of 11 missed): the goal has been scored and the players are celebrating
+    on the grass. The detector only knows players who are *playing*; the 2 it finds are the only 2
+    still standing. Not occlusion: max overlap 0.15, boxes 40–87 px wide, only 2 raw boxes from YOLO.
+  - **SNGS-043 357 and 544** (3.7 / 5.7 m, all dots shifted together): PnLCalib put the camera 25 m
+    off for a single frame, with its *best* self-reported error (0.4 px). Fixed by `jumpy()` → 0.4 m.
+  - **SNGS-028 99–123** (up to 10 of 14 missed): the camera pans across midfield, so only 2–4 pitch
+    lines stay in view, PnLCalib finds no camera at all, and the filled-in one is a 1 s guess
+    across a moving camera → ~3–4 m off, and most dots land further than 3 m from their player.
+  - **SNGS-028 270–280** (4.2–4.6 m): dolly zoom. PnLCalib moves the camera 40 m back and zooms in
+    (focal 4500 → 7861); near the 5 visible lines the picture hardly changes (3.3 px fit), but the
+    grass far from them shifts by meters. A whole stretch drifts together, so `jumpy()` can't see it
+    and only the ground truth can. Fix = one fixed camera position per clip, parked before Stage 5.
 
 **Explain it back:** Where does position error come from? (Calibration? Box bottom?
 Occlusion?) Which one is biggest in your data?
@@ -402,8 +462,10 @@ teams are classified; `ball_px` is `null` in frames without a ball.
 ```
 
 `camera.json` = `data/camera/<clip>.json` — per frame: `frame`, homography `H` (3x3, pitch meters →
-pixels, `H[2][2] = 1`), `pnl_rep_err_px` (PnLCalib's self-reported error). Frames without a camera are
-left out. Written by `src/calib/export_camera.py`. Full camera (K, R, t) gets added in Stage 5.
+pixels, `H[2][2] = 1`), `pnl_rep_err_px` (PnLCalib's self-reported error, `null` if it found no
+camera), `filled` (`true` = PnLCalib's camera was missing or broken, H was blended from the good frames
+around it with `h_at`). Frames before the first / after the last good frame are left out. Written by
+`src/calib/export_camera.py`. Full camera (K, R, t) gets added in Stage 5.
 
 Raw tracking = `data/track/<clip>_<model name>_<tracker name>.json`, written by
 `src/track/detect_track.py`. Pixels, straight from YOLO + tracker, before any filtering:

@@ -71,3 +71,44 @@ The higher the body part, the farther back it lands: the head ends up meters beh
 
 
     
+
+### 2026-09-16 — Stage 2 (position error vs SoccerNet ground truth)
+- **What I did:** Decided that broken and missing PnLCalib cameras get filled in from the
+  neighbouring frames. Wrote the empty cases of `match_frame` and chose the matching rule; Claude
+  wrote the loop on my request and walked me through it line by line. Explained the worst frames
+  from the minimap videos. *(Claude made `detect_track.py` / `to_pitch.py` / `minimap.py` run on
+  SoccerNet clips, added the `jumpy()` camera rule, and changed the anchors in my `interpolate_h`.)*
+- **What I learned (in my own words, from this session):**
+  - Matching our dots to the true players: **closest pairs first, then skip the used ones.** If every
+    player just takes its nearest dot in list order, an early player can steal the dot a later one
+    needed, and then the score blames the detector for a mistake the matching made. That's "greedy":
+    always take the best pair still available, never go back.
+  - SNGS-043 frame 708, 2 players found out of 11: **they are celebrating the goal, not playing.** The
+    detector only knows players in playing poses. It wasn't stacking: the biggest overlap between two
+    people in that frame was 0.15, and the boxes are 40–87 px wide. After the goal the miss rate goes
+    from 7% to 33%, but the median error doesn't move — a player we never find adds no error.
+  - SNGS-043 frame 357: the camera pans right and there is a lot of jitter, but the main points are
+    still good. **When all the dots shift together it's the camera, not the boxes.** Each dot moving
+    on its own would mean the boxes. There the whole set moved 3.5 m together.
+  - SNGS-028 frames 272–274: **it zoomed in from further away and the lines still match** — the dolly
+    zoom (the Vertigo shot). Near the visible lines the picture hardly changes, so the fit still looks
+    fine (3.3 px), but the grass far from those lines moves by meters, and that's where the players
+    stand. Same lesson as my Stage 1 clicks: H is only pinned down where it has evidence.
+  - **PnLCalib's own error is not a test**, now proven on one frame: frame 357 had the best
+    self-reported fit in its neighbourhood (0.4 px) and the worst real error (3.7 m).
+  - Interpolating H needs anchor points that are **in view in both frames**. The goal-area points were
+    off-screen or behind the camera during a pan, which made the first fill-in 24 m off.
+- **Numbers / results:**
+  - (A) camera only, after filling in broken frames: SNGS-028 median 0.61 m (mean 1.10 → 1.09 m,
+    was 3389 m before), SNGS-043 median 0.54 m, mean 0.62 m. Both clips now have a camera on all
+    750 frames. `jumpy()` cut the worst case from 19.0 → 12.9 m and 15.3 → 7.9 m.
+  - **(B) full pipeline: median 0.77 m (SNGS-028) and 0.56 m (SNGS-043)**, 95% 2.33 / 1.47 m.
+    18% / 7% of true players missed (7% = up to frame 634, before the goal), 1.7 / 0.9 extra dots
+    per frame.
+  - **(B) − (A) = +0.16 m and +0.02 m.** Detection and tracking add almost nothing: the error is the
+    camera. The labels' own wobble is 0.17–0.19 m, so that's the floor.
+- **Still confused about / not answered yet:** why (B)'s biggest error is exactly 3.00 m while (A)'s
+  is 12.9 m, and what that does to comparing the two. Also: if PnLCalib gave a perfect camera
+  tomorrow, which file changes, `data/track/…` or `data/tracks/…`?
+- **Next step:** smoothing each track and joining track pieces in meters, both measured against (B).
+  The 2026-09-15 session (detection, tracking, ID switches, NMS) still owes its own entry.

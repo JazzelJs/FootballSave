@@ -12,8 +12,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from clips import fps, frame_path  # same folder
+
 ROOT = Path(__file__).resolve().parents[2]
-FPS = 49.95  # clip04's frame rate (Stage 0)
 
 
 def colour(tid):
@@ -27,10 +28,10 @@ def main(raw_path):
     out = ROOT / "outputs" / f"{raw_path.stem}.mp4"
     # Pipe raw frames into ffmpeg: H.264 + yuv420p so QuickTime and browsers can play it.
     ff = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgr24",
-                           "-s", "1920x1080", "-r", str(FPS), "-i", "-", "-c:v", "libx264",
+                           "-s", "1920x1080", "-r", str(fps(d["clip"])), "-i", "-", "-c:v", "libx264",
                            "-crf", "23", "-pix_fmt", "yuv420p", str(out)], stdin=subprocess.PIPE)
     for f in d["frames"]:
-        img = cv2.imread(str(ROOT / "data" / "frames" / d["clip"] / f"{f['frame']:05d}.jpg"))
+        img = cv2.imread(str(frame_path(d["clip"], f["frame"])))
         for b in f["boxes"]:
             x1, y1, x2, y2 = map(int, b["xyxy"])
             c = colour(b["id"])

@@ -1,6 +1,6 @@
 """Stage 2: the foot pixel of each tracked box -> pitch meters, with inv(H) from Stage 1.
 
-Usage: uv run python src/track/to_pitch.py clip04
+Usage: uv run python src/track/to_pitch.py clip04   (or SNGS-028)
 Reads data/track/<clip>_football-player-detection-v9_botsort.json and data/camera/<clip>.json.
 Writes data/tracks/<clip>.json (tracks.json, format in PLAN.md -> Data formats).
 Prints two checks:
@@ -18,8 +18,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src" / "calib"))
 from homography import load_pairs, project  # noqa: E402  (lives in src/calib)
+from clips import fps  # noqa: E402  (same folder)
 
-FPS = 49.95
 # Drop person tracks whose average YOLO confidence is below this: on clip04 that removes a pile of
 # towels by the post (5 IDs) and a steward behind the goal, all 0.20-0.43, while every real player
 # is 0.60 or more. Picked on clip04 alone: check the gap again on other clips.
@@ -89,7 +89,8 @@ def main(clip):
         frame = int(path.stem.split("_")[1])
         _, pitch_xy, pixels = load_pairs(path)
         errs += list(np.linalg.norm(pixels_to_meters(cams[frame], pixels) - pitch_xy, axis=1))
-    print(f"check 1, clicks -> meters: mean {np.mean(errs):.2f} m, worst {np.max(errs):.2f} m ({len(errs)} points)")
+    if errs:  # SoccerNet clips have no clicks: eval_soccernet.py checks them against their labels
+        print(f"check 1, clicks -> meters: mean {np.mean(errs):.2f} m, worst {np.max(errs):.2f} m ({len(errs)} points)")
 
     # A ball track sometimes gets a person label for a few frames: call the whole track "ball".
     ball_ids = {b["id"] for f in raw["frames"] for b in f["boxes"] if b["cls"] == "ball"}
@@ -105,6 +106,7 @@ def main(clip):
         frames.append(frame_entry(f["frame"], boxes, cams.get(f["frame"])))
     out = ROOT / "data" / "tracks" / f"{clip}.json"
     out.parent.mkdir(exist_ok=True)
+    FPS = fps(clip)
     json.dump({"clip": clip, "fps": FPS, "frames": frames}, open(out, "w"))
     print(f"{len(frames)} frames -> {out}")
 

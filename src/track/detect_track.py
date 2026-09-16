@@ -1,6 +1,6 @@
 """Stage 2: YOLO detection + tracking (BoT-SORT / ByteTrack) on a clip's frames. Saves raw boxes (pixels).
 
-Usage: uv run python src/track/detect_track.py clip04 [model] [tracker]
+Usage: uv run python src/track/detect_track.py clip04 [model] [tracker]   (or SNGS-028)
   model = a file in data/models/. Default football-player-detection-v9.pt = Roboflow's football model
     ("player", "goalkeeper", "referee", "ball"); yolo26m.pt = general COCO model ("person", "sports ball").
     On clip04 the football model gives 32 person IDs vs 48, no photographers, ball in 274 vs 61 frames.
@@ -8,7 +8,7 @@ Usage: uv run python src/track/detect_track.py clip04 [model] [tracker]
   tracker = botsort.yaml (default) or bytetrack.yaml, both built into Ultralytics. Same people IDs on
     clip04 (32); BoT-SORT's camera-motion compensation keeps the ball in more frames (296 vs 274).
     Longer memory (track_buffer 150) and appearance re-ID changed nothing on clip04.
-Reads data/frames/<clip>/*.jpg, writes data/track/<clip>_<model name>_<tracker name>.json:
+Reads the clip's frames (data/frames/<clip>/ or data/soccernet/<clip>/img1/, see clips.py), writes data/track/<clip>_<model name>_<tracker name>.json:
   {"clip", "model", "frames": [{"frame": 0, "boxes": [{"id": 3, "cls": "player", "conf": 0.91,
                                                       "xyxy": [x1, y1, x2, y2]}]}]}
 id = the tracker's track number (same player across frames, until an ID switch). Boxes the tracker
@@ -19,6 +19,8 @@ import sys
 from pathlib import Path
 
 from ultralytics import YOLO
+
+from clips import frames_dir  # same folder
 
 ROOT = Path(__file__).resolve().parents[2]
 BALL = {"sports ball", "ball"}
@@ -33,7 +35,7 @@ def main(clip, model_name="football-player-detection-v9.pt", tracker="botsort.ya
     # persist=True: keep the tracker's memory between frames (that's what makes it tracking).
     # agnostic_nms=True: one box per person, even if the model is torn between "player" and "goalkeeper".
     # imgsz=1280: YOLO shrinks 1920 px to this; the default 640 makes far players ~10 px tall.
-    for r in model.track(source=str(ROOT / "data" / "frames" / clip), tracker=tracker,
+    for r in model.track(source=str(frames_dir(clip)), tracker=tracker,
                          classes=classes, agnostic_nms=True, imgsz=1280, device="mps", stream=True, persist=True,
                          verbose=False):
         boxes = []
