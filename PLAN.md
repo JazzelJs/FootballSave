@@ -10,12 +10,16 @@ Rule of thumb: if a stage takes more than ~2x the estimate, stop and ask Claude
 
 ## Current status (updated 2026-09-16) — read this first in a new chat
 
-**Where we are:** Stage 0 ✅ · Stage 1 ✅ · **Stage 2 in progress.** Checkpoint half 1 (minimap on
-clip04) ✅. Checkpoint half 2 (position error in meters vs SoccerNet ground truth): part **(A)
-camera only ✅**, part **(B) full pipeline measured (0.77 / 0.56 m median), explaining the worst
-frames = next**. Clips: **clip04** (our match, no ground truth)
-and the SoccerNet GSR clips **SNGS-028** (shot off target) + **SNGS-043** (goal). Everything up to
-here is committed and pushed to GitHub (JazzelJs/FootballSave, branch `main`): see `git log`.
+**Where we are:** Stage 0 ✅ · Stage 1 ✅ · **Stage 2 done ✅** (both checkpoint halves, plus the two
+fixes and the team colours that Stage 3 needs) · **Stage 3 (3D viewer) = next.**
+Where the pipeline stands, measured against SoccerNet ground truth: position **0.70 m / 0.48 m**
+median (SNGS-028 / SNGS-043), 16–17% of players missed, **6.1 / 5.5** of our track ids per real
+player, **96% / 89%** of outfield players given the right team. The remaining error is the camera,
+not detection: (B) − (A) is about zero, and after smoothing even slightly negative.
+Clips: **clip04** (our match, no ground truth) and the SoccerNet GSR clips **SNGS-028** (shot off
+target) + **SNGS-043** (goal). Committed and pushed to GitHub (JazzelJs/FootballSave, `main`).
+The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, where the dots are ·
+**(C)** identity, whether a dot keeps its name · **(D)** teams.
 
 **What happened on 2026-09-15/16 (not in `LEARNING_LOG.md` yet):**
 - Downloaded SoccerNet GSR clips with `src/track/fetch_soccernet.py` (reads one clip out of the
