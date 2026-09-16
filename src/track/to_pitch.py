@@ -195,10 +195,13 @@ def frame_entry(frame, boxes, H):
            "xyxy". cls is "ball" for the ball, anything else is a person.
     H: (3, 3) array for this frame, or None if PnLCalib found no camera.
     Returns: {"frame": frame,
-              "players": [{"id": 7, "team": None, "x": -3.2, "y": 14.8, "visible": True}, ...],
+              "players": [{"id": 7, "team": None, "x": -3.2, "y": 14.8, "visible": True,
+                           "box_px": [x1, y1, x2, y2]}, ...],
               "ball_px": [u, v] or None}
       - players: every person box, placed with foot_point + pixels_to_meters.
-        team = None for now: Stage 2 doesn't know teams yet.
+        team = None until teams.py fills it in.
+        box_px = the box this dot came from. Kept because join_tracks renames ids, so the raw
+        tracking file can no longer be looked up by id, and teams/pose need the crop anyway.
         visible = True: every box is something YOLO saw (later, filled-in gaps get False).
         If H is None we can't place anyone: players = [].
       - ball_px: the centre of the ball box in pixels (the most confident one if there are
@@ -210,7 +213,8 @@ def frame_entry(frame, boxes, H):
             if b["cls"] != "ball":
                 foot_px = foot_point(b["xyxy"])
                 x, y = pixels_to_meters(H, np.array([foot_px]))[0]
-                players.append({"id": b["id"], "team": None, "x": x, "y": y, "visible": True})
+                players.append({"id": b["id"], "team": None, "x": x, "y": y, "visible": True,
+                                "box_px": [round(v, 1) for v in b["xyxy"]]})
 
     # The ball stays in pixels, so it needs no H. Several ball boxes -> keep the most confident.
     balls = [b for b in boxes if b["cls"] == "ball"]

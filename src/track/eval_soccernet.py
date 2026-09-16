@@ -7,6 +7,7 @@ Reads data/soccernet/<clip>/Labels-GameState.json and data/camera/<clip>.json.
     meters. Detection and tracking play no part, so this is PnLCalib's error in meters.
 (B) full pipeline: our dots from data/tracks/<clip>.json (detect_track.py + to_pitch.py), matched
     one-to-one to the true players in each frame. Also counts true players we missed and extra dots.
+(D) teams: our team label per dot vs the labels' own (left / right / referee).
 (C) identity: which of our track ids sat on each true player, over the whole clip: how many
     different ids one player got (fragments) and how often the id changed (switches). (B) measures
     where a dot is, (C) measures whether it keeps the same name. Joining track pieces is judged here.
@@ -67,11 +68,19 @@ def camera_errors(H, foot_px, true_xy, goal):
 
 
 def load_ours(clip, goal):
-    """frame -> (our track ids (N,), our dots (N, 2) in SoccerNet meters), from tracks.json."""
+    """frame -> (our track ids (N,), our dots (N, 2) in SoccerNet meters, our team labels (N,))."""
     tracks = json.load(open(ROOT / "data" / "tracks" / f"{clip}.json"))
     return {fr["frame"]: (np.array([p["id"] for p in fr["players"]]),
-                          pitch_to_soccernet(np.array([[p["x"], p["y"]] for p in fr["players"]]).reshape(-1, 2), goal)[:, :2])
+                          pitch_to_soccernet(np.array([[p["x"], p["y"]] for p in fr["players"]]).reshape(-1, 2), goal)[:, :2],
+                          np.array([p["team"] for p in fr["players"]], dtype=object))
             for fr in tracks["frames"]}
+
+
+def load_roles(clip):
+    """true track_id -> (role, team): ("player", "left"), ("referee", None), ("goalkeeper", "right")."""
+    d = json.load(open(ROOT / "data" / "soccernet" / clip / "Labels-GameState.json"))
+    return {a["track_id"]: (a["attributes"].get("role"), a["attributes"].get("team"))
+            for a in d["annotations"] if a["category_id"] in PERSON}
 
 
 def match_frame(ours, true, max_dist):
@@ -177,7 +186,7 @@ def main(clip):
         return
     check_match_frame()
     ours = load_ours(clip, goal)
-    empty = (np.zeros(0), np.zeros((0, 2)))
+    empty = (np.zeros(0), np.zeros((0, 2)), np.zeros(0, dtype=object))
     scores = {f: match_frame(ours.get(f, empty)[1], true, MAX_DIST) for f, (_, true, _, _) in truth.items()}
     def report(name, fs):
         errs = np.concatenate([scores[f][0] for f in fs])
@@ -229,6 +238,28 @@ def main(clip):
     worst_id = sorted(seen, key=lambda t: -len({i for _, i in seen[t]}))[:5]
     print("  most broken-up players:", ", ".join(
         f"#{int(t)}: {len({i for _, i in seen[t]})} ids over {len(seen[t])} frames" for t in worst_id))
+
+    # (D) teams: our "A"/"B"/"other" per dot vs the labels' own team (left/right, None for referees).
+    # Which of our clusters is "left" is arbitrary, so try both ways round and keep the better one.
+    roles = load_roles(clip)
+    pairs_dt = []  # (our label, true role, true team) for every matched dot
+    for f in sorted(scores):
+        our_ids, _, our_teams = ours.get(f, empty)
+        for i, j in scores[f][3]:
+            role, team = roles.get(int(truth[f][3][j]), (None, None))
+            pairs_dt.append((our_teams[i], role, team))
+    if all(t is None for t, _, _ in pairs_dt):
+        print("\n(D) teams: not filled in yet (run src/track/teams.py)")
+        return
+    players = [(ours_t, team) for ours_t, role, team in pairs_dt if role == "player"]
+    best = max(sum(m.get(o) == t for o, t in players)
+               for m in ({"A": "left", "B": "right"}, {"A": "right", "B": "left"}))
+    refs = [o for o, role, _ in pairs_dt if role == "referee"]
+    keepers = [o for o, role, _ in pairs_dt if role == "goalkeeper"]
+    print()
+    print(f"(D) teams: {100 * best / len(players):.0f}% of outfield players right ({best}/{len(players)} dots)")
+    print(f"  referees called \"other\": {100 * refs.count('other') / max(len(refs), 1):.0f}% ({len(refs)} dots), "
+          f"goalkeepers: {100 * keepers.count('other') / max(len(keepers), 1):.0f}% ({len(keepers)} dots)")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 """Stage 2 minimap: the video frame (left) next to a top-down pitch with every player as a dot (right).
 
 Usage: uv run python src/track/minimap.py clip04   (or SNGS-028)
-Reads data/tracks/<clip>.json (positions) and the raw tracking file (boxes, for the left side).
+Reads data/tracks/<clip>.json (positions + boxes).
 Writes outputs/minimap_<clip>.mp4. Same colour = same ID on both sides. The tail behind each dot
 is its last second, so wobble (PnLCalib jitter) and jumps (ID switches, bad boxes) are easy to spot.
 SoccerNet clips also get the true players from the labels as white rings: dot inside ring = right.
@@ -66,8 +66,6 @@ def pitch_background():
 
 def main(clip):
     tracks = json.load(open(ROOT / "data" / "tracks" / f"{clip}.json"))
-    raw_path = ROOT / "data" / "track" / f"{clip}_football-player-detection-v9_botsort.json"
-    raw = {f["frame"]: f for f in json.load(open(raw_path))["frames"]}
     bg = pitch_background()
     FPS, trail = fps(clip), round(TRAIL_S * fps(clip))
     truth = {}
@@ -86,12 +84,10 @@ def main(clip):
         canvas = np.zeros((H, W, 3), np.uint8)
         # Left: the frame at half size, with the boxes of the players that are on the map.
         img = cv2.resize(cv2.imread(str(frame_path(clip, fr["frame"]))), (960, 540))
-        ids = {p["id"] for p in fr["players"]}
-        for b in raw[fr["frame"]]["boxes"]:
-            if b["id"] in ids:
-                x1, y1, x2, y2 = (np.array(b["xyxy"]) / 2).astype(int)
-                cv2.rectangle(img, (x1, y1), (x2, y2), colour(b["id"]), 1)
-                cv2.putText(img, str(b["id"]), (x1, y1 - 3), cv2.FONT_HERSHEY_SIMPLEX, 0.4, colour(b["id"]), 1)
+        for p in fr["players"]:
+            x1, y1, x2, y2 = (np.array(p["box_px"]) / 2).astype(int)
+            cv2.rectangle(img, (x1, y1), (x2, y2), colour(p["id"]), 1)
+            cv2.putText(img, str(p["id"]), (x1, y1 - 3), cv2.FONT_HERSHEY_SIMPLEX, 0.4, colour(p["id"]), 1)
         if fr["ball_px"]:
             cv2.circle(img, tuple((np.array(fr["ball_px"]) / 2).astype(int)), 6, (0, 0, 255), 2)
         cv2.putText(img, f"frame {fr['frame']}", (10, 525), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
