@@ -11,6 +11,7 @@ Usage (from the repo root, because it fetches data/tracks/<clip>.json):
 Pitch meters -> three.js: x stays x, y (into the field) becomes -z, up is +y.
 So the attacked goal is at z = 0 and the far goal at z = -105.
 Players are 1.8 m capsules coloured by team. Two cameras: orbit and the goalkeeper's (button, or press c).
+'show gaps' (or g) adds a faint capsule where a lost player was last seen.
 Still to do: interpolating between frames (show() takes the nearest one).
 -->
 <style>
@@ -27,6 +28,7 @@ Still to do: interpolating between frames (show() takes the nearest one).
   <input id="scrub" type="range" min="0" value="0" step="1">
   <span id="clock">0.0 s</span>
   <button id="view">goal view</button>
+  <button id="gaps">show gaps</button>
 </div>
 
 <script type="importmap">
@@ -140,6 +142,37 @@ function drawPlayers(players) {
   for (let i = players.length; i < pool.length; i++) pool[i].visible = false;
 }
 
+// ---- players the tracker lost ----------------------------------------------
+// A player is "in a gap" when their id was seen earlier and comes back later, but is
+// missing right now: the detector lost them, they didn't leave. We can only show where
+// they were LAST SEEN, so a ghost stands still while the real player runs on.
+const ghostMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 });
+const ghostPool = [];
+let gaps = [], showGaps = false;
+
+function findGaps(frames) {
+  const lastFrame = new Map();                        // id -> the last frame it is ever seen in
+  frames.forEach((f, k) => f.players.forEach(p => lastFrame.set(p.id, k)));
+  const seen = new Map();                             // id -> the last position we had for it
+  return frames.map((f, k) => {
+    f.players.forEach(p => seen.set(p.id, p));        // only ids from BEFORE k are in here
+    const here = new Set(f.players.map(p => p.id));
+    return [...seen.entries()]
+      .filter(([id]) => !here.has(id) && k < lastFrame.get(id))   // missing now, back later
+      .map(([, p]) => p);
+  });
+}
+
+function drawGaps(frame) {
+  const ghosts = showGaps ? gaps[frame] : [];
+  ghosts.forEach((p, i) => {
+    if (!ghostPool[i]) scene.add(ghostPool[i] = new THREE.Mesh(playerGeom, ghostMat));
+    ghostPool[i].position.set(p.x, 0.9, -p.y);
+    ghostPool[i].visible = true;
+  });
+  for (let i = ghosts.length; i < ghostPool.length; i++) ghostPool[i].visible = false;
+}
+
 // ---- playback --------------------------------------------------------------
 const play = document.getElementById('play'), scrub = document.getElementById('scrub'),
       clock = document.getElementById('clock'), msg = document.getElementById('msg');
@@ -148,9 +181,18 @@ let data = null, i = 0, playing = false, last = 0;
 function show(k) {
   i = Math.max(0, Math.min(data.frames.length - 1, k));
   drawPlayers(data.frames[i].players);                // nearest frame, no interpolation yet ([YOU])
+  drawGaps(i);
   scrub.value = i;
-  clock.textContent = (i / data.fps).toFixed(1) + ' s';
+  clock.textContent = (i / data.fps).toFixed(1) + ' s'
+    + (showGaps && gaps[i].length ? ` (+${gaps[i].length} lost)` : '');
 }
+
+const gapsBtn = document.getElementById('gaps');
+gapsBtn.onclick = () => {
+  showGaps = !showGaps;
+  gapsBtn.textContent = showGaps ? 'hide gaps' : 'show gaps';
+  show(i);
+};
 
 const view = document.getElementById('view');
 view.onclick = () => {
@@ -166,6 +208,7 @@ addEventListener('keydown', e => {
   if (e.key === 'ArrowRight') show(i + 1);
   if (e.key === 'ArrowLeft') show(i - 1);
   if (e.key === 'c') view.onclick();
+  if (e.key === 'g') gapsBtn.onclick();
 });
 
 function tick(now) {
@@ -183,6 +226,7 @@ fetch(`../../data/tracks/${clip}.json`)
   .then(r => r.ok ? r.json() : Promise.reject(r.status))
   .then(d => {
     data = d;
+    gaps = findGaps(d.frames);
     scrub.max = d.frames.length - 1;
     msg.textContent = `${d.clip} — ${d.frames.length} frames at ${d.fps} fps`;
     show(0);
