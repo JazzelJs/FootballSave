@@ -12,7 +12,7 @@ Pitch meters -> three.js: x stays x, y (into the field) becomes -z, up is +y.
 So the attacked goal is at z = 0 and the far goal at z = -105.
 Players are 1.8 m capsules coloured by team. Two cameras: orbit and the goalkeeper's (button, or press c).
 'show gaps' (or g) adds a faint capsule where a lost player was last seen.
-Still to do: interpolating between frames (show() takes the nearest one).
+Playback interpolates between frames, so motion is smooth on any screen.
 -->
 <style>
   body { margin: 0; background: #111; color: #eee; font: 13px system-ui, sans-serif; }
@@ -56,6 +56,7 @@ const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
 camera.position.set(0, 30, 45);                       // behind the attacked goal, looking up the pitch
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0, -35);
+controls.maxPolarAngle = Math.PI / 2 - 0.01;  // stop at ground level: the grass is one-sided, so from below the pitch disappears
 
 // The goalkeeper camera: standing in the middle of the attacked goal, looking up the pitch.
 // Bolted in place on purpose: measured on SNGS-043, a fixed 50 deg / 16:9 view keeps every
@@ -178,20 +179,35 @@ const play = document.getElementById('play'), scrub = document.getElementById('s
       clock = document.getElementById('clock'), msg = document.getElementById('msg');
 let data = null, i = 0, playing = false, last = 0;
 
-function show(k) {
-  i = Math.max(0, Math.min(data.frames.length - 1, k));
-  drawPlayers(data.frames[i].players);                // nearest frame, no interpolation yet ([YOU])
-  drawGaps(i);
-  scrub.value = i;
+// The data is 25 fps (49.95 for clip04) and the screen is usually 60 Hz, so a stored frame
+// would be held for ~2.4 refreshes and then jump. Ask for a position BETWEEN two frames instead.
+// Per player, not per list position: the two lists differ in length and order, so match on id.
+function playersAt(f) {
+  const k = Math.floor(f), frac = f - k;
+  const now = data.frames[k].players, next = data.frames[k + 1]?.players;
+  if (!next || frac === 0) return now;
+  const byId = new Map(next.map(p => [p.id, p]));
+  return now.map(p => {
+    const q = byId.get(p.id);                         // the same player in the next frame, if still there
+    return q ? { ...p, x: p.x + (q.x - p.x) * frac, y: p.y + (q.y - p.y) * frac } : p;
+  });                                                 // a player who vanishes stays put for that fraction
+}
+
+function show(f) {
+  i = Math.max(0, Math.min(data.frames.length - 1, f));
+  const k = Math.round(i);
+  drawPlayers(playersAt(i));
+  drawGaps(k);
+  scrub.value = k;
   clock.textContent = (i / data.fps).toFixed(1) + ' s'
-    + (showGaps && gaps[i].length ? ` (+${gaps[i].length} lost)` : '');
+    + (showGaps && gaps[k].length ? ` (+${gaps[k].length} lost)` : '');
 }
 
 const gapsBtn = document.getElementById('gaps');
 gapsBtn.onclick = () => {
   showGaps = !showGaps;
   gapsBtn.textContent = showGaps ? 'hide gaps' : 'show gaps';
-  show(i);
+  show(Math.round(i));
 };
 
 const view = document.getElementById('view');
@@ -205,8 +221,8 @@ play.onclick = () => { playing = !playing; play.textContent = playing ? '❚❚'
 scrub.oninput = () => { playing = false; play.textContent = '▶'; show(+scrub.value); };
 addEventListener('keydown', e => {
   if (e.key === ' ') play.onclick();
-  if (e.key === 'ArrowRight') show(i + 1);
-  if (e.key === 'ArrowLeft') show(i - 1);
+  if (e.key === 'ArrowRight') show(Math.round(i) + 1);
+  if (e.key === 'ArrowLeft') show(Math.round(i) - 1);
   if (e.key === 'c') view.onclick();
   if (e.key === 'g') gapsBtn.onclick();
 });
@@ -214,13 +230,25 @@ addEventListener('keydown', e => {
 function tick(now) {
   requestAnimationFrame(tick);
   if (data && playing) {
-    const step = Math.floor((now - last) / 1000 * data.fps);   // real time, whatever the screen does
-    if (step > 0) { last += step / data.fps * 1000; show((i + step) % data.frames.length); }
+    const step = (now - last) / 1000 * data.fps;      // real time, whatever the screen does
+    last = now;
+    show((i + step) % data.frames.length);
   }
   if (controls.enabled) controls.update();
   renderer.render(scene, active);
 }
 requestAnimationFrame(tick);
+
+function checkInterp() {
+  const k = Math.floor(data.frames.length / 2);
+  const a = data.frames[k].players[0], b = data.frames[k + 1].players.find(p => p.id === a.id);
+  if (!b) return console.log('interp check: skipped, first player is not in the next frame');
+  const mid = playersAt(k + 0.5).find(p => p.id === a.id);
+  console.assert(Math.abs(mid.x - (a.x + b.x) / 2) < 1e-9 && Math.abs(mid.y - (a.y + b.y) / 2) < 1e-9,
+    'halfway between two frames must be the midpoint', a, b, mid);
+  console.assert(playersAt(k)[0].x === a.x, 'a whole frame number must be the stored frame');
+  console.log(`interp check: ok (id ${a.id} x ${a.x.toFixed(2)} -> ${mid.x.toFixed(2)} -> ${b.x.toFixed(2)})`);
+}
 
 fetch(`../../data/tracks/${clip}.json`)
   .then(r => r.ok ? r.json() : Promise.reject(r.status))
@@ -230,6 +258,7 @@ fetch(`../../data/tracks/${clip}.json`)
     scrub.max = d.frames.length - 1;
     msg.textContent = `${d.clip} — ${d.frames.length} frames at ${d.fps} fps`;
     show(0);
+    checkInterp();
   })
   .catch(e => { msg.textContent = `could not load data/tracks/${clip}.json (${e}) — serve the repo root`; });
 </script>
