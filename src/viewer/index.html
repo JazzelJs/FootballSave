@@ -1,0 +1,191 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>football3d viewer</title>
+<!--
+Stage 3 viewer skeleton: the pitch in 3D, tracks.json loaded, play/pause/scrub.
+
+Usage (from the repo root, because it fetches data/tracks/<clip>.json):
+    python3 -m http.server 8000
+    open http://localhost:8000/src/viewer/?clip=SNGS-043     (or ?clip=clip04)
+
+Pitch meters -> three.js: x stays x, y (into the field) becomes -z, up is +y.
+So the attacked goal is at z = 0 and the far goal at z = -105.
+Players are 1.8 m capsules coloured by team. Two cameras: orbit and the goalkeeper's (button, or press c).
+Still to do: interpolating between frames (show() takes the nearest one).
+-->
+<style>
+  body { margin: 0; background: #111; color: #eee; font: 13px system-ui, sans-serif; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 10px;
+         align-items: center; padding: 8px 12px; background: #000a; }
+  #bar input[type=range] { flex: 1; }
+  #play { width: 34px; }
+  #msg { position: fixed; top: 10px; left: 12px; }
+</style>
+<div id="msg">loading…</div>
+<div id="bar">
+  <button id="play">▶</button>
+  <input id="scrub" type="range" min="0" value="0" step="1">
+  <span id="clock">0.0 s</span>
+  <button id="view">goal view</button>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// Same numbers as src/calib/pitch_model.py (and minimap.py's HALF_W / HALF_L), in meters.
+const HALF_W = 34, LENGTH = 105, BOX_W = 40.32, BOX_D = 16.5, GOAL_AREA_W = 18.32,
+      GOAL_AREA_D = 5.5, GOAL_W = 7.32, GOAL_H = 2.44, SPOT = 11, ARC_R = 9.15, CIRCLE_R = 9.15;
+
+const clip = new URLSearchParams(location.search).get('clip') || 'SNGS-043';
+
+const scene = new THREE.Scene();
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+document.body.append(renderer.domElement);
+
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
+camera.position.set(0, 30, 45);                       // behind the attacked goal, looking up the pitch
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, -35);
+
+// The goalkeeper camera: standing in the middle of the attacked goal, looking up the pitch.
+// Bolted in place on purpose: measured on SNGS-043, a fixed 50 deg / 16:9 view keeps every
+// player on screen in all 750 frames, so panning after the players would buy nothing.
+const gkCam = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
+gkCam.position.set(0, 1.7, 0);                        // goal centre, eye height
+gkCam.lookAt(0, 1.7, -30);                            // level, 30 m up the pitch: no tilt, no target to follow
+let active = camera;
+
+function resize() {
+  for (const c of [camera, gkCam]) {                  // both cameras, or the spare one keeps a stale aspect
+    c.aspect = innerWidth / innerHeight;
+    c.updateProjectionMatrix();
+  }
+  renderer.setSize(innerWidth, innerHeight);
+}
+addEventListener('resize', resize); resize();
+
+// ---- the pitch -------------------------------------------------------------
+const grass = new THREE.Mesh(
+  new THREE.PlaneGeometry(2 * HALF_W + 10, LENGTH + 16),
+  new THREE.MeshBasicMaterial({ color: 0x2b6e2b }));
+grass.rotation.x = -Math.PI / 2;
+grass.position.set(0, -0.01, -LENGTH / 2);            // just under the lines, so they stay visible
+scene.add(grass);
+
+const segs = [];                                      // pairs of [x, y] in pitch meters
+const line = (a, b) => segs.push(a, b);
+const poly = pts => { for (let i = 1; i < pts.length; i++) line(pts[i - 1], pts[i]); };
+
+// outline, halfway line, centre circle
+poly([[-HALF_W, 0], [HALF_W, 0], [HALF_W, LENGTH], [-HALF_W, LENGTH], [-HALF_W, 0]]);
+line([-HALF_W, LENGTH / 2], [HALF_W, LENGTH / 2]);
+poly(Array.from({ length: 65 }, (_, i) => {
+  const t = i / 64 * 2 * Math.PI;
+  return [CIRCLE_R * Math.sin(t), LENGTH / 2 + CIRCLE_R * Math.cos(t)];
+}));
+
+// both ends: s = +1 at the attacked goal (y = 0), -1 at the far goal (y = 105)
+for (const [y0, s] of [[0, 1], [LENGTH, -1]]) {
+  const box = (w, d) => poly([[-w / 2, y0], [-w / 2, y0 + s * d], [w / 2, y0 + s * d], [w / 2, y0]]);
+  box(BOX_W, BOX_D);
+  box(GOAL_AREA_W, GOAL_AREA_D);
+  const arc = [];                                     // the bit of the penalty arc outside the box
+  for (let i = 0; i <= 40; i++) {
+    const t = -Math.PI / 2 + i / 40 * Math.PI;
+    const p = [ARC_R * Math.sin(t), y0 + s * (SPOT + ARC_R * Math.cos(t))];
+    if (Math.abs(p[1] - y0) >= BOX_D) arc.push(p);
+  }
+  poly(arc);
+}
+
+const white = new THREE.LineBasicMaterial({ color: 0xffffff });
+const flat = segs.flatMap(([x, y]) => [x, 0, -y]);
+scene.add(new THREE.LineSegments(
+  new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(flat, 3)), white));
+
+// the two goals, as posts + crossbar
+for (const y0 of [0, LENGTH]) {
+  const g = [], post = GOAL_W / 2, z = -y0;
+  g.push(-post, 0, z, -post, GOAL_H, z, post, 0, z, post, GOAL_H, z, -post, GOAL_H, z, post, GOAL_H, z);
+  scene.add(new THREE.LineSegments(
+    new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(g, 3)), white));
+}
+
+// ---- players ---------------------------------------------------------------
+// One 1.8 m capsule per player, coloured by the team teams.py wrote into tracks.json.
+const playerGeom = new THREE.CapsuleGeometry(0.35, 1.1, 4, 12);   // 1.1 straight + 2 x 0.35 caps = 1.8 m
+const TEAM_COLOUR = { A: 0xffc800, B: 0x005aff, other: 0xdcdcdc };  // same colours as minimap.py, as RGB hex
+const teamMat = Object.fromEntries(Object.entries(TEAM_COLOUR)
+  .map(([team, c]) => [team, new THREE.MeshLambertMaterial({ color: c })]));
+scene.add(new THREE.HemisphereLight(0xffffff, 0x336633, 2));  // Lambert is black without light; green bounce off the grass
+const pool = [];                                      // reused, so we don't build meshes every frame
+
+function drawPlayers(players) {
+  players.forEach((p, i) => {
+    if (!pool[i]) scene.add(pool[i] = new THREE.Mesh(playerGeom, teamMat.other));
+    // A pool slot is not a player: the list changes length and order, so re-colour every frame.
+    // (clip04 has team: null until teams.py has run, and teamMat[null] would hide the capsule.)
+    pool[i].material = teamMat[p.team] ?? teamMat.other;
+    pool[i].position.set(p.x, 0.9, -p.y);             // pitch (x, y) -> three.js (x, up, -y), 0.9 = half of 1.8 = feet on the grass
+    pool[i].visible = true;
+  });
+  for (let i = players.length; i < pool.length; i++) pool[i].visible = false;
+}
+
+// ---- playback --------------------------------------------------------------
+const play = document.getElementById('play'), scrub = document.getElementById('scrub'),
+      clock = document.getElementById('clock'), msg = document.getElementById('msg');
+let data = null, i = 0, playing = false, last = 0;
+
+function show(k) {
+  i = Math.max(0, Math.min(data.frames.length - 1, k));
+  drawPlayers(data.frames[i].players);                // nearest frame, no interpolation yet ([YOU])
+  scrub.value = i;
+  clock.textContent = (i / data.fps).toFixed(1) + ' s';
+}
+
+const view = document.getElementById('view');
+view.onclick = () => {
+  active = active === camera ? gkCam : camera;
+  controls.enabled = active === camera;               // don't let a drag move a camera you can't see
+  view.textContent = active === camera ? 'goal view' : 'orbit view';
+};
+
+play.onclick = () => { playing = !playing; play.textContent = playing ? '❚❚' : '▶'; last = performance.now(); };
+scrub.oninput = () => { playing = false; play.textContent = '▶'; show(+scrub.value); };
+addEventListener('keydown', e => {
+  if (e.key === ' ') play.onclick();
+  if (e.key === 'ArrowRight') show(i + 1);
+  if (e.key === 'ArrowLeft') show(i - 1);
+  if (e.key === 'c') view.onclick();
+});
+
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (data && playing) {
+    const step = Math.floor((now - last) / 1000 * data.fps);   // real time, whatever the screen does
+    if (step > 0) { last += step / data.fps * 1000; show((i + step) % data.frames.length); }
+  }
+  if (controls.enabled) controls.update();
+  renderer.render(scene, active);
+}
+requestAnimationFrame(tick);
+
+fetch(`../../data/tracks/${clip}.json`)
+  .then(r => r.ok ? r.json() : Promise.reject(r.status))
+  .then(d => {
+    data = d;
+    scrub.max = d.frames.length - 1;
+    msg.textContent = `${d.clip} — ${d.frames.length} frames at ${d.fps} fps`;
+    show(0);
+  })
+  .catch(e => { msg.textContent = `could not load data/tracks/${clip}.json (${e}) — serve the repo root`; });
+</script>
