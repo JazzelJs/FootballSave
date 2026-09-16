@@ -4,6 +4,7 @@ Usage: uv run python src/track/minimap.py clip04   (or SNGS-028)
 Reads data/tracks/<clip>.json (positions + boxes).
 Writes outputs/minimap_<clip>.mp4. Same colour = same ID on both sides. The tail behind each dot
 is its last second, so wobble (PnLCalib jitter) and jumps (ID switches, bad boxes) are easy to spot.
+Once teams.py has run, the dot itself is coloured by team (A yellow, B blue, other grey).
 SoccerNet clips also get the true players from the labels as white rings: dot inside ring = right.
 """
 import json
@@ -31,6 +32,7 @@ S = np.array([[PX, 0, -PX * X0], [0, -PX, PX * Y1], [0, 0, 1]])  # meters -> map
 MAP_W, MAP_H = (X1 - X0) * PX, (Y1 - Y0) * PX  # 640 x 944
 HALF_W, HALF_L = 34, 52.5  # ponytail: assumes a 105 x 68 m pitch (SoccerNet's), only to draw the lines
 TRAIL_S = 1  # seconds of tail behind each dot
+TEAM_COLOUR = {"A": (255, 200, 0), "B": (0, 90, 255), "other": (220, 220, 220)}  # BGR, once teams.py has run
 
 
 def soccernet_to_pitch(XY, goal):
@@ -99,9 +101,11 @@ def main(clip):
             cv2.circle(m, tuple(to_map(xy)[0]), 7, (255, 255, 255), 1, cv2.LINE_AA)
         trails = {p["id"]: trails.get(p["id"], [])[-trail:] + [to_map((p["x"], p["y"]))[0]] for p in fr["players"]}
         for p in fr["players"]:
+            # Dot = team (once teams.py has filled it in), trail = track id, so you can see both.
             c, pts = colour(p["id"]), np.array(trails[p["id"]])
+            dot = TEAM_COLOUR.get(p["team"], c)
             cv2.polylines(m, [pts], False, c, 1, cv2.LINE_AA)
-            cv2.circle(m, tuple(pts[-1]), 4, c, -1)
+            cv2.circle(m, tuple(pts[-1]), 4, dot, -1)
             cv2.putText(m, str(p["id"]), tuple(pts[-1] + [6, -6]), cv2.FONT_HERSHEY_SIMPLEX, 0.4, c, 1)
         canvas[:MAP_H, 960:] = m
         ff.stdin.write(canvas.tobytes())

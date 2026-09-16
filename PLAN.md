@@ -125,9 +125,22 @@ here is committed and pushed to GitHub (JazzelJs/FootballSave, branch `main`): s
    the old ID carries on somewhere else, i.e. the tracker trades IDs between two players who are
    both on screen. Joining can only fix the other 31% (the old ID really ended, median gap 1 frame).
    Bigger settings (2 s / 5 m) buy little more (fragments 5.2 on 043) at the same merge risk.
-7. **Next: team colour per track** ([YOU], already needed before Stage 3). Besides colouring the 3D
-   capsules, it gives a rule against the swaps that joining can't touch: a yellow shirt and a green
-   shirt are never the same person.
+7. **Team colour done 2026-09-16** (Claude wrote `shirt_colour` + `assign_teams` in the new
+   `src/track/teams.py` on my request, walked through line by line; I chose per-track over per-frame).
+   Torso crop (25-55% of the box height, middle half of the width) -> drop grass pixels -> hue
+   histogram (12 bins, saturation-weighted, smoothed around the circle) + median saturation and value
+   -> median over 20 frames per track -> `cv2.kmeans` K=2, and a track further than 2x the median
+   distance from its centre becomes "other". Written into `tracks.json` as `team`, drawn on the
+   minimap (A yellow, B blue, other grey).
+   | (D) teams | SNGS-028 | SNGS-043 | clip04 |
+   |---|---|---|---|
+   | outfield players given the right team | **96%** | **89%** | no ground truth; 12 / 9 / 2 tracks |
+   | referees called "other" | 61% | 91% | — |
+   | goalkeepers called "other" | 100% | 20% | the keeper is "other" ✅ |
+   Two traps Claude hit and left comments about: a black referee kit is dark, so "drop dark pixels as
+   shadow" deleted the referee; and `hue` is uint8, so `hue * 12` wraps at 255 and put blue in red's bin.
+8. **Next: Stage 3** (3D viewer). Still open in Stage 2, when it matters: use the team colours to
+   refuse a join or a swap between two different kits (69% of ID switches are swaps).
 
 **Pipeline for a clip, as it runs today** (all from the repo root, all local on the Mac):
 1. Frames: `src/extract_frames.sh "<source video>" clip04 00:02:09 00:02:15.74` →
@@ -324,9 +337,9 @@ is 1 px of click error worth more meters on the far side of the box?
   rounds off real sharp turns), (b) **joining track pieces in meters**: a track that ends and
   another that starts close by (in meters, not pixels — the camera pans) a few frames later =
   the same player. Not done yet on purpose: without ground truth we'd only be tuning by eye.
-- [YOU, needed before Stage 3] Team for each track (`team` is `null` now). The detector's
-  classes can't be trusted for this (see Current status). Idea: shirt colour of the torso
-  part of each box, clustered into 2 teams + referee/goalkeepers.
+- ~~[YOU, needed before Stage 3] Team for each track.~~ Done 2026-09-16, `src/track/teams.py`:
+  shirt colour of the torso crop, clustered into 2 teams + "other". 96% / 89% of outfield player
+  dots right on SNGS-028 / SNGS-043 (see Current status).
 - [TOGETHER, optional] Run the full sn-gamestate baseline in Colab on the same GSR clip
   and compare with your simpler pipeline. Where does the baseline win, and why?
 
@@ -478,7 +491,9 @@ with 4 px reprojection error still be badly wrong in 3D?
 ## Data formats (the contract between stages)
 
 `tracks.json` = `data/tracks/<clip>.json`, written by `src/track/to_pitch.py`. `team` is `null` until
-teams are classified; `ball_px` is `null` in frames without a ball.
+`src/track/teams.py` fills it in with `"A"` / `"B"` / `"other"`; `ball_px` is `null` in frames without
+a ball. Each player also carries `box_px` ([x1, y1, x2, y2], the box the dot came from): `join_tracks`
+renames ids, so the raw tracking file can no longer be matched by id, and teams/pose need the crop.
 ```json
 {
   "clip": "clip01",

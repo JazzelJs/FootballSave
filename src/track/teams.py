@@ -20,6 +20,8 @@ from clips import frame_path  # same folder
 
 ROOT = Path(__file__).resolve().parents[2]
 SAMPLES = 20  # frames to look at per track: the median over 20 crops beats one lucky crop
+HUE_BINS = 12       # hue histogram: 15 degrees per bin, enough to tell two kits apart
+OTHER_FACTOR = 2.0  # a track further than this times the median distance from its cluster = "other"
 
 
 def torso_patch(img, box_px):
@@ -54,8 +56,28 @@ def shirt_colour(patch):
       - The patch still holds some grass, some skin, maybe an arm. A median or a histogram peak
         is less easily dragged off than a mean.
       - White and black shirts have no meaningful hue at all: saturation/value must carry those.
+    (Claude wrote this on my request, walked through line by line.)
     """
-    # TODO(human)
+    hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
+    hue, sat, val = hsv[:, :, 0].ravel(), hsv[:, :, 1].ravel(), hsv[:, :, 2].ravel()
+
+    grass = (hue >= 30) & (hue <= 85) & (sat > 40)  # the pitch: green and colourful enough to be sure
+    keep = ~grass  # NOT "and bright enough": a black referee kit is dark and still a shirt
+    if keep.sum() < 0.15 * len(hue):
+        return None  # almost all grass: the box is mostly pitch, no shirt to look at
+
+    hue, sat, val = hue[keep], sat[keep], val[keep]
+    # A histogram instead of an average, because hue is a circle: red is both 0 and 179, and the
+    # average of those two is cyan. Each pixel votes with its saturation, so washed-out pixels
+    # (skin, white socks, shadow) barely count and a strong shirt colour dominates.
+    # .astype(int) matters: hue is uint8, so hue * 12 wraps around at 255 and blue lands in red's bin.
+    hist = np.bincount(hue.astype(int) * HUE_BINS // 180, weights=sat / 255.0, minlength=HUE_BINS)[:HUE_BINS]
+    # Let each bin bleed into its neighbours, wrapping around the circle (np.roll), so that two
+    # slightly different reds landing in bins 11 and 0 still look alike instead of opposite.
+    hist = 0.25 * np.roll(hist, 1) + 0.5 * hist + 0.25 * np.roll(hist, -1)
+    hist = hist / max(hist.sum(), 1e-6)
+    # Plus how colourful and how bright the shirt is: that's all a white or black kit has.
+    return np.concatenate([hist, [np.median(sat) / 255.0, np.median(val) / 255.0]])
 
 
 def assign_teams(colours):
@@ -69,8 +91,20 @@ def assign_teams(colours):
       - Referees and the two goalkeepers wear their own colours: a track far from BOTH cluster
         centres should be "other" rather than forced into a team.
       - There are ~11 tracks per team and 1-3 referees, so the clusters are lopsided, not even.
+    (Claude wrote this on my request, walked through line by line.)
     """
-    # TODO(human)
+    ids = list(colours)
+    data = np.stack([colours[i] for i in ids]).astype(np.float32)
+    stop = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 1e-4)
+    # attempts=10: k-means starts from random centres, so run it 10 times and keep the tightest result.
+    _, labels, centres = cv2.kmeans(data, 2, None, stop, 10, cv2.KMEANS_PP_CENTERS)
+    labels = labels.ravel()
+
+    # How far each track sits from the centre it was given. A referee or a goalkeeper gets put in one
+    # of the two teams anyway (k-means has nowhere else to put them), but sits much further out.
+    dist = np.linalg.norm(data - centres[labels], axis=1)
+    limit = OTHER_FACTOR * np.median(dist)
+    return {i: ("other" if d > limit else "AB"[l]) for i, l, d in zip(ids, labels, dist)}
 
 
 def check_teams():
