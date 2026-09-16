@@ -10,8 +10,10 @@ Rule of thumb: if a stage takes more than ~2x the estimate, stop and ask Claude
 
 ## Current status (updated 2026-09-16) — read this first in a new chat
 
-**Where we are:** Stage 0 ✅ · Stage 1 ✅ · **Stage 2 done ✅** (both checkpoint halves, plus the two
-fixes and the team colours that Stage 3 needs) · **Stage 3 (3D viewer) = next.**
+**Where we are:** Stage 0 ✅ · Stage 1 ✅ · Stage 2 ✅ · **Stage 3: all the code is done ✅**
+(viewer, capsules by team, orbit + goalkeeper cameras, gaps toggle, interpolation — see the stage
+below) · **decision gate answered 2026-09-16: all three gaps matter, but body pose (Stage 4) goes
+first** · **Stage 4 = next.**
 Where the pipeline stands, measured against SoccerNet ground truth: position **0.70 m / 0.48 m**
 median (SNGS-028 / SNGS-043), 16–17% of players missed, **6.1 / 5.5** of our track ids per real
 player, **96% / 89%** of outfield players given the right team. The remaining error is the camera,
@@ -141,12 +143,45 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
    Two traps Claude hit and left comments about: a black referee kit is dark, so "drop dark pixels as
    shadow" deleted the referee; and `hue` is uint8, so `hue * 12` wraps at 255 and put blue in red's bin.
 
+**Stage 3, what the viewer showed (2026-09-16, all committed and pushed):**
+- The goalkeeper view works, and it exposes what the data does **not** have. At 24.8 s (the goal)
+  nine capsules stand around the arc and you cannot tell what is happening: a capsule has no facing
+  direction and there is no ball. At 28.0 s only three capsules are left — not a rendering problem,
+  that is the detector losing the celebrating players (the measured 7% → 33% miss after frame 634).
+- clip04's **id 14 is the sideline referee**: 308 of 337 frames, x −36.2 .. −35.4, never inside the
+  touchline. Two things follow. (1) The left-edge homography is steady out there — the distance to
+  the line does not drift over 6 s. (2) `teams.py` called them **team A in all 308 frames**, the
+  same referee weakness as on SoccerNet (61% / 91% "other"), but confident.
+- **Rejected, measured:** dropping tracks whose median |x| > 35 m. It fires on 1 of 23 tracks on
+  clip04 and **0 of 132 / 0 of 122** on the SoccerNet clips, where every number stayed identical.
+  A rule that never fires on the clips with ground truth cannot be validated — not added.
+
+**Stage 4 started 2026-09-16 (nothing downloaded, nothing run yet):**
+- **The shooter on SNGS-043 is our track id 166** (455 frames, 155–614; it dies 12 frames after the
+  kick and id 1174 takes over). True track_id 22 in the labels.
+- **The kick is frame 602.** Found from the ball's *pixel* speed (2.2 → 48.3 px/frame), not meters:
+  the labels' ball `bbox_pitch` is the ground projection of a flying ball, so in meters the "speed"
+  ramps smoothly 0 → 23 m/s over 35 frames and hides the kick completely. Keep for Stage 5.
+- **The labels carry the ball in 738 of 750 frames, with pitch coordinates** — ground truth for the
+  ball already exists on the SoccerNet clips.
+- **Crop size, the number that decides Stage 4's ceiling:** id 166's box over frames 560–620 is a
+  median **78 px tall, 40 px wide** (min 48, max 90). This stage's checkpoint assumed 100–200 px.
+  Pose models want 256×256, so the shooter gets upscaled ~3×. KTH (player fills a 480×640 frame)
+  is the best case by a wider margin than planned.
+- **Open, not answered:** do we need the real SMPL model files (free registration, academic
+  licence), or is a joints-only 3D pose model enough for the checkpoint numbers (facing direction,
+  reprojection, PA-MPJPE on KTH's 14 joints)? Separate question: a free rigged character (e.g. a
+  Sketchfab CC model) is a *display* asset — it can be driven by joint rotations later, but it
+  cannot produce pose and changes no number. Decide before downloading anything.
+- **Also open:** GVHMR or 4DHumans. It changes the input: 4DHumans wants per-frame crops, GVHMR
+  wants the video plus a track and also estimates camera motion. GPU work goes to **Kaggle**.
+
 **Start the next session with:**
 1. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
    *where* vs *who*, foot point → meters, wobble, goal side. 2026-09-16 has its `LEARNING_LOG.md`
    entry; parts of it are Claude's wording and I should rewrite those in my own words.
-2. **Stage 3, the 3D viewer** (see the stage below). `tracks.json` has everything it needs:
-   positions in meters, ids that survive gaps, teams, and `box_px`.
+2. **Answer the Stage 3 decision gate** (see the stage below) and pick Stage 4 (body pose) or
+   Stage 5 (the ball in 3D). The evidence is above: no ball in meters, and capsules have no facing.
 3. Open questions I haven't answered yet (no rush, they're small):
    - (B)'s biggest error is exactly 3.00 m while (A)'s is 12.9 m. Why, and what does that do to
      comparing (B) with (A)?
@@ -171,6 +206,9 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
 6. Minimap: `uv run python src/track/minimap.py clip04` → `outputs/minimap_clip04.mp4` (dot = team,
    trail = track id, white rings = ground truth on SoccerNet clips).
    Boxes-only video for comparing detectors/trackers: `src/track/draw_tracks.py <raw json>`.
+7. Watch it in 3D: `python3 -m http.server 8000` **from the repo root**, then
+   `http://localhost:8000/src/viewer/?clip=clip04`. Buttons: goal view (`c`), show gaps (`g`).
+   After editing the page, hard-reload (Cmd-Shift-R) or the browser serves the old one.
 
 **SoccerNet GSR clip (ground truth), as it runs today:**
 1. `uv run python src/track/fetch_soccernet.py` (list clips) → `… fetch_soccernet.py SNGS-028` →
@@ -390,17 +428,28 @@ Occlusion?) Which one is biggest in your data?
 - Coordinate system conversion (pitch z-up → three.js y-up).
 - Interpolating positions between frames; camera field of view.
 
-**Build**
-- [CLAUDE] three.js viewer skeleton in `src/viewer/`: pitch plane with lines, loads
-  `tracks.json`, play/pause/scrub.
-- [YOU] Player capsules (1.8 m tall), team colors, update each frame.
-- [YOU] Two cameras: free orbit camera and a **goalkeeper camera** at goal center,
-  eye height ~1.7 m, looking at the ball or shooter.
-- [TOGETHER] Toggle to show which players were never visible in the broadcast frame
-  (gaps in their tracks).
+**Build** — all done 2026-09-16, one file: `src/viewer/index.html` (three.js 0.170 from a CDN
+importmap, no build step, no new dependency). Serve the **repo root** (`python3 -m http.server 8000`)
+and open `/src/viewer/?clip=SNGS-043` — `file://` fails, fetch is blocked there.
+- ~~[CLAUDE] three.js viewer skeleton~~ pitch from `pitch_model.py`'s constants (both ends + goals),
+  loads `tracks.json`, play/pause/scrub. Pitch (x, y) → three.js (x, up, −y), so the attacked goal
+  is at z = 0. Playback steps by real time, so 25 fps and 49.95 fps clips both run at the right speed.
+- ~~[YOU] Player capsules (1.8 m tall), team colors, update each frame.~~ Coloured from `team` in
+  `tracks.json`, same colours as `minimap.py`. The material is re-assigned every frame: a pool slot
+  is not a player.
+- ~~[YOU] Two cameras~~ orbit (stops at grass level) + goalkeeper at (0, 1.7, 0), looking level up
+  the pitch. **Fixed aim on purpose**: a 50° / 16:9 view from the goal keeps 100% of players on
+  screen in all 750 frames of SNGS-043, so panning would buy nothing. No ball in meters to look at
+  anyway (`ball_px` only, 18/750 frames).
+- ~~[TOGETHER] Toggle to show which players were never visible~~ "show gaps" (or `g`): a faint
+  capsule where a lost player was last seen. In a gap = the id was seen earlier and comes back
+  later, but is missing now. Mean 2.0 per frame on SNGS-043 (max 6, 88% of frames), 2.9 on
+  SNGS-028, 0.4 on clip04. It stands still on purpose — a line to where they reappear is a guess.
+- Extra: positions interpolate between frames (matched by id), with a self-check that runs on load.
 
 **Checkpoint**
-- You can watch the clip in 3D from the goalkeeper position.
+- ~~You can watch the clip in 3D from the goalkeeper position.~~ Done 2026-09-16 (`1751ac5`,
+  `313262e`, `a1c3f37`).
 
 **Decision gate (be honest):** Is the goalkeeper view useful with just capsules? Which
 missing information hurts most — body pose, the ball, or off-screen players? Use the
@@ -422,8 +471,10 @@ answer to choose between Stage 4 and Stage 5 next.
   scale and translation — measures pose shape only).
 
 **Build**
-- [TOGETHER] Colab notebook: run a single-view model (e.g. GVHMR or 4DHumans) on crops
-  of 1–3 key players (the shooter first). Needs SMPL model files (free registration).
+- [TOGETHER] **Kaggle** notebook (not Colab): run a single-view model (e.g. GVHMR or 4DHumans) on
+  crops of 1–3 key players. **The shooter on SNGS-043 = our track id 166, kick at frame 602, box
+  median 78 px tall** (see Current status). Needs SMPL model files (free registration) — or a
+  joints-only model instead, still to be decided.
   Export per-frame pose to `pose_<track_id>.npz`.
 - [YOU] Anchor each body: root position = Stage 2 pitch position, pose from the model.
 - [TOGETHER] Show skeletons/meshes in the viewer.

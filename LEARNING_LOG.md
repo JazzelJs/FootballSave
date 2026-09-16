@@ -153,3 +153,39 @@ The higher the body part, the farther back it lands: the head ends up meters beh
   12.9 m, and what that does to comparing them. Whether `data/track/…` or `data/tracks/…` would change
   if the camera were perfect.
 - **Next step:** Stage 3, the 3D viewer and the goalkeeper camera. The 2026-09-15 wrap-up is still owed.
+
+### 2026-09-16 (part 3) — Stage 3: the 3D viewer, capsules, goalkeeper camera
+- **What I did:** Asked Claude for the viewer skeleton, then asked for the capsule + team-colour
+  change **line by line with an explanation for each line** before letting it write the code. Same
+  for the goalkeeper camera. Spotted that clip04's id 14 is a **sideline referee**, not a bad
+  position. Decided to skip the off-pitch filter after seeing the measurement, and to keep the
+  viewer in the browser instead of porting it to SwiftUI/SceneKit for now. Reverted the
+  interpolation once and had it re-applied.
+- **What I learned (to rewrite in my own words — this is Claude's wording):**
+  - A pool slot is not a player. The players list changes length and order between frames, so
+    anything bound per slot (colour, and the same trap in interpolation) has to be re-bound per
+    frame by **id**, not by position in the list.
+  - A capsule is centred on its own origin, so a 1.8 m player stands at y = 0.9, not y = 0.
+  - `MeshBasicMaterial` ignores lights. Flat colour was fine for a sphere; a capsule needs shading,
+    which needs a light, or it renders black.
+  - Two cameras cost nothing: `renderer.render(scene, camera)` takes the camera as an argument, so
+    switching views is one variable. But `OrbitControls` is bound to one camera forever.
+  - A `PlaneGeometry` is one-sided: from below the pitch is not dark, it is gone.
+  - Interpolating between frames makes motion smooth without adding any information. The data is
+    still 25 positions per second.
+- **Numbers / results:**
+  - Goalkeeper camera, 50° / 16:9 → half-FOV **39.7°**. A **fixed** aim from the goal keeps
+    **100%** of players on screen in **all 750 frames** of SNGS-043 (worst frame too), so panning
+    after the ball or the players would buy nothing. Median distance from the goal 42 m, where a
+    1.8 m player is ~**28 px** tall on a 600 px view.
+  - Players "in a gap" (id seen earlier, back later, missing now): SNGS-043 mean **2.0**, max 6,
+    88% of frames; SNGS-028 mean **2.9**, max 9, 88%; clip04 mean **0.4**, max 2, 33%.
+  - Off-pitch tracks (median |x| > 35 m): clip04 **1 of 23** (id 14, 308 frames, median |x| 35.9,
+    always outside the touchline); SNGS-028 **0 of 132**; SNGS-043 **0 of 122**. Dropping them left
+    every SoccerNet number identical, so I did not add the filter.
+  - `teams.py` gave id 14 team **A in all 308 frames** — the linesman's kit is close to team A's.
+    On SoccerNet referees were called "other" only 61% / 91% of the time, so this is the same
+    weakness, but confident and wrong.
+- **Still confused about:** _(mine to fill in)_
+- **Decision gate, my answer:** all three of them matter, but **body pose first** → Stage 4.
+- **Next step:** Stage 4, body pose. The 2026-09-15 wrap-up is **still** owed.
