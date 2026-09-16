@@ -30,6 +30,10 @@ MIN_CONF = 0.5
 # truth: the position error keeps falling up to ~1 s, and at 0.84 s our players' 95% speed (5.5 m/s)
 # matches the true players' (5.3 m/s). Longer flattens real turns: at 2 s the error gets worse again.
 SMOOTH_S = 0.84
+# Joining track pieces: how long a player may be lost, and how far the pieces may be apart. Starting
+# guesses, to be tuned against (C) in eval_soccernet.py (with (B) as the guard: too generous and we
+# glue two different players together, which makes the position error worse).
+JOIN_GAP_S, JOIN_DIST = 1.0, 3.0
 
 
 def smooth_tracks(frames, window):
@@ -82,6 +86,87 @@ def check_smooth_tracks():
     bumpy[5]["players"][0]["y"] = 3.0
     out = smooth_tracks(bumpy, 5)
     assert abs(out[5]["players"][0]["y"] - 2.0) < 0.5, "a single bad point must be pulled back"
+
+
+def join_tracks(frames, max_gap, max_dist):
+    """Glue track pieces back together: a track that stops and another that starts nearby = one player.
+
+    The tracker loses a player behind another one and gives them a new id when they come back. On
+    SNGS-028 the 23 real people got 190 of our ids. Joining happens in METERS, not pixels, because
+    the camera pans: a player standing still moves hundreds of pixels but zero meters.
+
+    frames: as in smooth_tracks (already smoothed when main calls this).
+    max_gap: how many frames a player may be lost for and still count as the same player.
+    max_dist: how far apart (meters) the end of one piece and the start of the next may be.
+    Returns: frames where the joined pieces all carry the FIRST piece's id. Positions don't change,
+             only ids: this can't help (B), only (C).
+    Rules:
+      - Piece B can follow piece A only if B starts AFTER A ends (they must not overlap in time:
+        if both are on screen in the same frame they are two different people).
+      - One-to-one, like match_frame: a piece has at most one follower and at most one predecessor.
+        Closest first is the safe order here too.
+      - A chain A -> B -> C must all end up with A's id.
+    (Claude wrote this on my request, walked through line by line.)
+    """
+    frames = [dict(fr, players=[dict(p) for p in fr["players"]]) for fr in frames]  # deep copy
+    pieces = {}  # our id -> where and when that piece starts and ends
+    for fr in frames:
+        for p in fr["players"]:
+            piece = pieces.setdefault(p["id"], {"first": fr["frame"], "start": (p["x"], p["y"])})
+            piece["last"], piece["end"] = fr["frame"], (p["x"], p["y"])  # overwritten until the last frame
+
+    # Every pair that COULD be the same player: j starts after i ends, soon enough and near enough.
+    # ponytail: every piece against every piece (200 x 200 here). Bucket by frame if a clip gets long.
+    candidates = []
+    for i, a in pieces.items():
+        for j, b in pieces.items():
+            gap = b["first"] - a["last"]
+            if 0 < gap <= max_gap:  # gap > 0 means they never share a frame
+                dist = float(np.hypot(*(np.array(b["start"]) - np.array(a["end"]))))
+                if dist <= max_dist:
+                    candidates.append((dist, i, j))
+
+    follows = {}  # piece -> the piece it continues; following the chain up gives the player's first id
+
+    def first_piece(i):
+        while i in follows:
+            i = follows[i]
+        return i
+
+    has_next, has_prev = set(), set()
+    for dist, i, j in sorted(candidates):  # closest first, like match_frame
+        if i in has_next or j in has_prev or first_piece(i) == first_piece(j):
+            continue  # i already continues somewhere, j already follows something, or it's a loop
+        has_next.add(i)
+        has_prev.add(j)
+        follows[j] = i
+
+    for fr in frames:
+        for p in fr["players"]:
+            p["id"] = first_piece(p["id"])
+    return frames
+
+
+def check_join_tracks():
+    """Three cases with a known answer."""
+    def clip(pieces):  # pieces: {id: [(frame, x, y), ...]} -> frames, as in tracks.json
+        fs = sorted({f for t in pieces.values() for f, _, _ in t})
+        return [{"frame": f, "ball_px": None,
+                 "players": [{"id": i, "team": None, "x": x, "y": y, "visible": True}
+                             for i, t in pieces.items() for g, x, y in t if g == f]} for f in fs]
+
+    def ids(frames):
+        return {p["id"] for fr in frames for p in fr["players"]}
+
+    # Same player: piece 1 ends at frame 4 at x = 4, piece 2 starts at frame 9 at x = 5.
+    same = clip({1: [(f, float(f), 0.0) for f in range(5)], 2: [(f, 5.0, 0.0) for f in range(9, 14)]})
+    assert len(ids(join_tracks(same, 10, 3))) == 1, "a short gap, a short distance: one player"
+    # Two people on screen at the same time are never the same player, however close they are.
+    both = clip({1: [(f, 0.0, 0.0) for f in range(10)], 2: [(f, 1.0, 0.0) for f in range(10)]})
+    assert len(ids(join_tracks(both, 10, 3))) == 2, "pieces that overlap in time are two people"
+    # Far apart in meters: leave them alone.
+    far = clip({1: [(f, 0.0, 0.0) for f in range(5)], 2: [(f, 20.0, 0.0) for f in range(9, 14)]})
+    assert len(ids(join_tracks(far, 10, 3))) == 2, "20 m apart is not the same player"
 
 
 def foot_point(xyxy):
@@ -171,6 +256,16 @@ def main(clip, window=None):
             check_smooth_tracks()
             frames = smoothed
             print(f"smoothed each track over {window} frames ({int(window) / fps(clip):.2f} s)")
+
+    joined = join_tracks(frames, round(JOIN_GAP_S * fps(clip)), JOIN_DIST)
+    if joined is None:
+        print("join_tracks isn't written yet (TODO(human)): keeping the tracker's ids")
+    else:
+        check_join_tracks()
+        before = len({p["id"] for fr in frames for p in fr["players"]})
+        frames = joined
+        after = len({p["id"] for fr in frames for p in fr["players"]})
+        print(f"joined track pieces (gap <= {JOIN_GAP_S} s, <= {JOIN_DIST} m apart): {before} ids -> {after}")
 
     out = ROOT / "data" / "tracks" / f"{clip}.json"
     out.parent.mkdir(exist_ok=True)

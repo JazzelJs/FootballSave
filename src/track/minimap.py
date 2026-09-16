@@ -73,7 +73,7 @@ def main(clip):
     truth = {}
     if is_soccernet(clip):
         goal = GOAL_SIDE[clip]
-        truth = {f: soccernet_to_pitch(xy, goal) for f, (_, xy, _) in load_truth(clip).items()}
+        truth = {f: soccernet_to_pitch(xy, goal) for f, (_, xy, _, _) in load_truth(clip).items()}
         some = next(iter(truth.values()))  # there and back must land on the same points
         assert np.allclose(soccernet_to_pitch(pitch_to_soccernet(some, goal)[:, :2], goal), some)
     out = ROOT / "outputs" / f"minimap_{clip}.mp4"

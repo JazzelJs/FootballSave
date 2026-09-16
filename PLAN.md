@@ -107,10 +107,27 @@ here is committed and pushed to GitHub (JazzelJs/FootballSave, branch `main`): s
    Picked with two numbers that agree: (B) stops improving around 1 s, and our 95% player speed
    (5.5 m/s at 0.84 s) matches the true players' 5.3 m/s, where unsmoothed we "measured" 10.5 m/s.
    Misses also drop (1263 → 1140 on 043): a smoothed dot lands inside the 3 m matching limit more often.
-5. **Next: joining track pieces.** (B) can't judge it — it measures *where*, not *who*, so a dot in
-   the right place scores the same under any ID. Needs an identity number first ([CLAUDE]: ID
-   switches + how many of our IDs one true player gets; the labels have a `track_id` per person,
-   24 real people in SNGS-043 vs our 202 IDs).
+5. **Identity number (C) added 2026-09-16** [CLAUDE], because (B) measures *where*, not *who*: a dot
+   in the right place scores the same under any ID. Follows each true player (the labels carry a
+   `track_id`) and watches which of our IDs sits on them: fragments per player, ID switches, and
+   **merged ids** (one of our IDs on several people) — that last one is the guard against joining too
+   greedily, not (B), which joining cannot move at all.
+6. **Joining track pieces done 2026-09-16** (Claude wrote `join_tracks` in `to_pitch.py` on my
+   request, walked through line by line; knobs `JOIN_GAP_S` = 1.0 s, `JOIN_DIST` = 3.0 m).
+   | | SNGS-028 | SNGS-043 | clip04 |
+   |---|---|---|---|
+   | our IDs, before → after | 210 → 132 | 161 → 122 | 24 → 23 |
+   | fragments per true player | 8.3 → 6.1 | 6.4 → 5.5 | — |
+   | ID switches | 375 → 359 | 289 → 276 | — |
+   | merged ids | 24 → 27 | 29 → 30 | — |
+   | (B) median | 0.70 m (unchanged) | 0.48 m (unchanged) | — |
+   **The honest finding: joining is not the cure.** 69% of ID switches on both clips are *swaps* —
+   the old ID carries on somewhere else, i.e. the tracker trades IDs between two players who are
+   both on screen. Joining can only fix the other 31% (the old ID really ended, median gap 1 frame).
+   Bigger settings (2 s / 5 m) buy little more (fragments 5.2 on 043) at the same merge risk.
+7. **Next: team colour per track** ([YOU], already needed before Stage 3). Besides colouring the 3D
+   capsules, it gives a rule against the swaps that joining can't touch: a yellow shirt and a green
+   shirt are never the same person.
 
 **Pipeline for a clip, as it runs today** (all from the repo root, all local on the Mac):
 1. Frames: `src/extract_frames.sh "<source video>" clip04 00:02:09 00:02:15.74` →

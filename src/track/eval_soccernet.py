@@ -7,6 +7,9 @@ Reads data/soccernet/<clip>/Labels-GameState.json and data/camera/<clip>.json.
     meters. Detection and tracking play no part, so this is PnLCalib's error in meters.
 (B) full pipeline: our dots from data/tracks/<clip>.json (detect_track.py + to_pitch.py), matched
     one-to-one to the true players in each frame. Also counts true players we missed and extra dots.
+(C) identity: which of our track ids sat on each true player, over the whole clip: how many
+    different ids one player got (fragments) and how often the id changed (switches). (B) measures
+    where a dot is, (C) measures whether it keeps the same name. Joining track pieces is judged here.
 """
 import json
 import sys
@@ -28,7 +31,11 @@ PLAY_END = {"SNGS-043": 634}
 
 
 def load_truth(clip):
-    """frame -> (foot_px (N, 2), true_xy (N, 2) SoccerNet meters, raw_xy (N, 2)) for every labelled person."""
+    """frame -> (foot_px (N, 2), true_xy (N, 2) SoccerNet meters, raw_xy (N, 2), track_id (N,)).
+
+    track_id is the labels' own id for that person, the same number in every frame: what our track
+    ids should look like if detection and tracking were perfect (24 people in SNGS-043).
+    """
     d = json.load(open(ROOT / "data" / "soccernet" / clip / "Labels-GameState.json"))
     frame_of = {im["image_id"]: int(im["file_name"].split(".")[0]) for im in d["images"]}  # 000001.jpg -> 1
     per_frame = {}
@@ -39,7 +46,8 @@ def load_truth(clip):
         foot = (b["x"] + b["w"] / 2, b["y"] + b["h"])  # middle of the bottom edge, like foot_point
         raw = (r["x_bottom_middle"], r["y_bottom_middle"]) if r else (np.nan, np.nan)  # raw is sometimes missing
         per_frame.setdefault(frame_of[a["image_id"]], []).append(
-            (foot, (p["x_bottom_middle"], p["y_bottom_middle"]), raw))
+            (foot, (p["x_bottom_middle"], p["y_bottom_middle"]), raw, a["track_id"]))
+    # (the track ids come back as floats; they are only ever compared, never used as numbers)
     return {f: tuple(np.array(col, float) for col in zip(*rows)) for f, rows in per_frame.items()}
 
 
@@ -59,9 +67,10 @@ def camera_errors(H, foot_px, true_xy, goal):
 
 
 def load_ours(clip, goal):
-    """frame -> (N, 2) our dots in SoccerNet meters, from tracks.json (made by to_pitch.py)."""
+    """frame -> (our track ids (N,), our dots (N, 2) in SoccerNet meters), from tracks.json."""
     tracks = json.load(open(ROOT / "data" / "tracks" / f"{clip}.json"))
-    return {fr["frame"]: pitch_to_soccernet(np.array([[p["x"], p["y"]] for p in fr["players"]]).reshape(-1, 2), goal)[:, :2]
+    return {fr["frame"]: (np.array([p["id"] for p in fr["players"]]),
+                          pitch_to_soccernet(np.array([[p["x"], p["y"]] for p in fr["players"]]).reshape(-1, 2), goal)[:, :2])
             for fr in tracks["frames"]}
 
 
@@ -71,23 +80,26 @@ def match_frame(ours, true, max_dist):
     ours: (N, 2) our dots, SoccerNet meters (X, Y). N can be 0.
     true: (M, 2) the true players, SoccerNet meters (X, Y).
     max_dist: meters. A pair further apart than this is not a match.
-    Returns (errors, missed, extra):
+    Returns (errors, missed, extra, matched):
       errors: (K,) array, the distance in meters of each matched pair (K = number of pairs)
       missed: int, true players with no dot (M - K)
       extra: int, dots with no true player (N - K)
+      matched: list of (dot index, true player index), so the caller can see WHICH dot went with
+               which player. Only used by the identity numbers (Claude added this part).
     One-to-one: one dot can be the match of at most one true player, and the other way round.
     """
     errors = []
+    matched = []
     missed = 0
     extra = 0
     if len(ours) == 0:
         missed = len(true)
         extra = 0
-        return np.array(errors), missed, extra
+        return np.array(errors), missed, extra, matched
     if len(true) == 0:
         missed = 0
         extra = len(ours)
-        return np.array(errors), missed, extra
+        return np.array(errors), missed, extra, matched
 
     # Greedy matching: closest pairs first, skip pairs whose dot or player is already used.
     # (Claude wrote this part on my request.)
@@ -99,24 +111,25 @@ def match_frame(ours, true, max_dist):
         if i in used_dots or j in used_true:
             continue  # a closer pair already took this dot or this player
         errors.append(dist)
+        matched.append((i, j))
         used_dots.add(i)
         used_true.add(j)
     missed = len(true) - len(errors)
     extra = len(ours) - len(errors)
-    return np.array(errors), missed, extra
+    return np.array(errors), missed, extra, matched
 
 
 def check_match_frame():
     """Tiny cases with a known answer. Any correct one-to-one matching passes them."""
-    e, m, x = match_frame(np.array([[0, 0], [10, 0], [50, 50]]), np.array([[0.5, 0], [10, 1], [30, 30], [31, 30]]), 3)
+    e, m, x, _ = match_frame(np.array([[0, 0], [10, 0], [50, 50]]), np.array([[0.5, 0], [10, 1], [30, 30], [31, 30]]), 3)
     assert np.allclose(sorted(e), [0.5, 1.0]) and (m, x) == (2, 1), "2 pairs, 2 true players missed, 1 extra dot"
-    e, m, x = match_frame(np.array([[0, 0], [0.2, 0]]), np.array([[0.1, 0]]), 3)
+    e, m, x, _ = match_frame(np.array([[0, 0], [0.2, 0]]), np.array([[0.1, 0]]), 3)
     assert len(e) == 1 and (m, x) == (0, 1), "two dots on one player: only one of them is a match, the other is extra"
-    e, m, x = match_frame(np.zeros((0, 2)), np.array([[0, 0]]), 3)
+    e, m, x, _ = match_frame(np.zeros((0, 2)), np.array([[0, 0]]), 3)
     assert len(e) == 0 and (m, x) == (1, 0), "no dots at all: everyone missed"
     # A at X = 0, B at X = 2.5; dots at X = -2.8 and 1.5. If A goes first it takes the 1.5 dot and B
     # is left with -2.8 (5.3 m away): 1 pair. The right answer pairs A-(-2.8) and B-1.5: 2 pairs.
-    e, m, x = match_frame(np.array([[-2.8, 0], [1.5, 0]]), np.array([[0, 0], [2.5, 0]]), 3)
+    e, m, x, _ = match_frame(np.array([[-2.8, 0], [1.5, 0]]), np.array([[0, 0], [2.5, 0]]), 3)
     assert np.allclose(sorted(e), [1.0, 2.8]) and (m, x) == (0, 0), \
         "A must not steal B's dot: the order you match in matters (see the A/B example)"
 
@@ -138,10 +151,10 @@ def main(clip):
 
     # The labels' own wobble: SoccerNet stores two positions per person (bbox_pitch and bbox_pitch_raw).
     # How far apart they are = how exact the "truth" itself is. Don't expect to beat this.
-    floor = np.concatenate([np.linalg.norm(t - r, axis=1) for _, t, r in truth.values()])
+    floor = np.concatenate([np.linalg.norm(t - r, axis=1) for _, t, r, _ in truth.values()])
     print(summary("labels' own", floor[~np.isnan(floor)]))
 
-    per_frame = {f: camera_errors(cams[f], foot, true, goal) for f, (foot, true, _) in truth.items() if f in cams}
+    per_frame = {f: camera_errors(cams[f], foot, true, goal) for f, (foot, true, _, _) in truth.items() if f in cams}
     all_errs = np.concatenate(list(per_frame.values()))
     print(summary("(A) camera", all_errs))
     for name, fs in [("  PnLCalib", set(per_frame) - filled), ("  filled in", filled & set(per_frame))]:
@@ -164,7 +177,8 @@ def main(clip):
         return
     check_match_frame()
     ours = load_ours(clip, goal)
-    scores = {f: match_frame(ours.get(f, np.zeros((0, 2))), true, MAX_DIST) for f, (_, true, _) in truth.items()}
+    empty = (np.zeros(0), np.zeros((0, 2)))
+    scores = {f: match_frame(ours.get(f, empty)[1], true, MAX_DIST) for f, (_, true, _, _) in truth.items()}
     def report(name, fs):
         errs = np.concatenate([scores[f][0] for f in fs])
         n = sum(len(truth[f][1]) for f in fs)
@@ -183,6 +197,38 @@ def main(clip):
     print("(B) worst frames (mean m):", ", ".join(f"{f}: {scores[f][0].mean():.1f}" for f in worst))
     most_missed = sorted(scores, key=lambda f: -scores[f][1])[:5]
     print("(B) most missed:", ", ".join(f"{f}: {scores[f][1]}/{len(truth[f][1])}" for f in most_missed))
+
+    # (C) identity: (B) says WHERE, this says WHO. Follow each true player through the clip and look
+    # at which of our track ids was on them: how many different ones (fragments), and how often it
+    # changed (switches). Perfect tracking = 1 fragment and 0 switches per player.
+    seen = {}  # true track id -> [(frame, our id), ...] in frame order
+    for f in sorted(scores):
+        our_ids = ours.get(f, empty)[0]
+        for i, j in scores[f][3]:
+            seen.setdefault(truth[f][3][j], []).append((f, our_ids[i]))
+    frags = np.array([len({i for _, i in v}) for v in seen.values()])
+    switches = np.array([sum(a[1] != b[1] for a, b in zip(v, v[1:])) for v in seen.values()])
+    covered = np.array([len(v) for v in seen.values()])
+    print()
+    print(f"(C) identity: {len(seen)} true people, we gave them {frags.sum()} different track ids "
+          f"({frags.mean():.1f} each, worst {frags.max()})")
+    print(f"  ID switches: {switches.sum()} in total, {switches.mean():.1f} per player "
+          f"(one switch per {covered.sum() / max(switches.sum(), 1):.0f} frames of following someone)")
+    print(f"  our IDs in tracks.json: {len({i for f in ours for i in ours[f][0]})} "
+          f"(the extra ones are dots that never matched anybody)")
+    # The other way round: one of OUR ids sitting on several true people. Joining track pieces too
+    # greedily glues two players into one id, which LOWERS the fragment count while being wrong:
+    # this is the number that catches it, not (B) (joining never moves a dot).
+    people_of = {}
+    for t, v in seen.items():
+        for _, i in v:
+            people_of.setdefault(i, set()).add(t)
+    merged = {i: p for i, p in people_of.items() if len(p) > 1}
+    print(f"  merged ids (one id on several people): {len(merged)}/{len(people_of)}, "
+          f"worst sits on {max((len(p) for p in merged.values()), default=1)} people")
+    worst_id = sorted(seen, key=lambda t: -len({i for _, i in seen[t]}))[:5]
+    print("  most broken-up players:", ", ".join(
+        f"#{int(t)}: {len({i for _, i in seen[t]})} ids over {len(seen[t])} frames" for t in worst_id))
 
 
 if __name__ == "__main__":
