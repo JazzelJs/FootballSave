@@ -272,25 +272,30 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
 1. **Stage 4 checkpoint is complete** (19.7 px reprojection · 113.3 mm PA-MPJPE · facing stated both
    ways). Owed before it closes, both mine: the three "Explain it back" answers, and the
    `LEARNING_LOG.md` wrap-up for 2026-09-15.
-2. **Stage 5: A, B, C and E2 are done (2026-09-18), all of it written by Claude on my "just do it"
-   under time pressure — so the whole stage owes me the walk-through and the "Explain it back".**
+2. **Stage 5: A, B, C, D2 and E2 are done (2026-09-18); D1 and E1's kick frame are mine.**
+   All of it was written by Claude on my "just do it" / "do it for me" under time pressure, so the
+   whole stage owes me the walk-through and the "Explain it back".
    Headline: the shot is fitted in 3D from one camera at **3.70 px median reprojection**,
-   **117 km/h**, and it crosses the goal line **0.42 m inside the post** — a goal, which is free
-   ground truth nobody annotated. Pipeline: `from_labels.py` → `clean.py` → `fit.py` → `draw.py`.
-   **Two boxes are left and both are blocked on downloads I have to fetch by hand** (sizes and
-   target folders are in the D section): `SNv3D.csv` (3.6 MB) for D1, and `yolo-sn-ball-opt.pt`
-   (49 MB) for D2 — and E1 (clip04) needs D2 as well, because clip04's detector cannot tell the
-   match ball from the spare balls by the ad boards (pixel steps up to 1690 px).
-   **The three things in this stage I should be able to explain before it closes:**
+   **117 km/h**, crossing the goal line **0.42 m inside the post** — a goal, which is free ground
+   truth nobody annotated. Pipeline: `from_labels.py` → `clean.py` → `fit.py` → `draw.py`, and
+   `detect.py --write` in place of labels on a clip that has none.
+   **My two next actions, both small:**
+   - **D1**: fill in the three `TODO(human)`s in `src/ball/size_baseline.py` (the data is
+     downloaded). Watch the two traps named in its docstring.
+   - **E1**: watch `outputs/ball_clip04_detected.mp4`, pick clip04's kick frame, then
+     `fit.py clip04 --kick <frame>`.
+   **The four things in this stage I should be able to explain before it closes:**
    - Why the unconstrained fit chose 272 km/h *into the ground*, and why `vz ≥ 0` is a
      measurement-free fact that fixes it.
    - Why two answers 0.4 px apart can be 70 km/h and 171 km/h, and what that says about how much
      a single camera can ever know.
    - Why free flight ends at the goal line (617) and not where the pixel step collapses (622).
+   - Why binning "objects that never move" in pixels found nothing, and in metres found the
+     culprit — and what that says about every other per-pixel rule in this repo.
    **Known soft spots, stated rather than hidden:** k = 0.046 1/m is 3.5× a real ball's, so drag
    is absorbing other errors; C2's 0.42 m margin is smaller than our camera's 2.25 m error at the
-   ball; and C3's shadow plot is dominated by that same camera offset, so it cannot measure height
-   on this clip.
+   ball; C3's shadow plot is dominated by that same camera offset, so it cannot measure height on
+   this clip; and the ball detector's whole-clip recall is only 53% even at native resolution.
 3. **Parked, not blocking:** track 171's facing is 30° median over 68 running samples and its worst
    frames (568–572) are the hand-over inside the joined track. That is a tracking problem, and it is
    the Stage 2 team-colour idea coming back.
