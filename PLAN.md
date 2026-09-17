@@ -272,8 +272,10 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
 1. **Stage 4 checkpoint is complete** (19.7 px reprojection · 113.3 mm PA-MPJPE · facing stated both
    ways). Owed before it closes, both mine: the three "Explain it back" answers, and the
    `LEARNING_LOG.md` wrap-up for 2026-09-15.
-2. **Stage 5 started 2026-09-18.** Work the "Execution order" checklist in the Stage 5 section from
-   the top; A, B and C need no downloads. Optional question I skipped, worth answering sometime:
+2. **Stage 5 started 2026-09-18, A1 done.** Work the "Execution order" checklist in the Stage 5
+   section from the top; A, B and C need no downloads. **Next box is A2**, and the measured facts
+   just under A3 (fit window 602–622, no filled cameras, which frames are label jitter) are already
+   worked out — read them before touching the data. Optional question I skipped, worth answering sometime:
    before the kick the same labels give sensible pitch coordinates — why doesn't the ray problem
    bite there?
 3. **Parked, not blocking:** track 171's facing is 30° median over 68 running samples and its worst
@@ -650,13 +652,29 @@ in **738 of 750 frames**, missing 367 and 476–481 and 558–562; the box is **
 12**; the kick is **frame 602**; the focal length is 3557 px at 602 and 4164 px at 620.
 
 **A. The 2D ball track, from the labels (no download).**
-- [ ] A1 [CLAUDE] `src/ball/from_labels.py SNGS-043` → `data/ball/SNGS-043.json`: one row per frame
-  with the pixel centre, the box size, and the label's own `bbox_pitch`. Plain I/O.
+- [x] A1 [CLAUDE] **done 2026-09-18**: `uv run python src/ball/from_labels.py SNGS-043` →
+  `data/ball/SNGS-043.json`. Ball in 738/750 frames; gaps 367, 476–481, 558–562; box 3–25 px wide,
+  median 12. Each row keeps `px` (a real measurement, the only input to a fit) and `pitch_px` (where
+  a ray through that pixel hits the grass — the ball's *shadow* once it is airborne). Self-check:
+  `--self-check` asserts the shadow is inside the pitch at 601 and past the goal line at 620.
 - [ ] A2 [YOU] Clean it: fill the three gaps, and decide what counts as a false detection. The 3 px
   boxes are the suspicious ones — look at them before you trust them.
 - [ ] A3 [YOU] The kick point. Frame 602, ball on the grass, through Stage 1's H → pitch (x, y).
   **Check it against the labels at frame 601, where the ball IS still on the ground** — you should
   land within a few tens of cm. If you don't, the fit downstream cannot be right either.
+
+**Measured on 2026-09-18, before starting A2 — use these instead of re-deriving them:**
+- **Every frame of the flight has its own PnLCalib camera.** 0 filled frames in 595–640, so the
+  nearest-trusted-camera dance that `src/pose/orient.py` needs does not apply to the ball fit.
+- **The kick is frame 602 in one number:** the ball's pixel step goes 2.2 px (601) → **48.3 px** (602).
+- **Free flight ends at about frame 622.** The pixel step collapses (622→623 is 1.0 px, 625→626 is
+  0.0 px) and the track *reverses*: y climbs 448 → 495 over frames 622–640. That is the ball in the
+  net, not in the air. **So the fit window is roughly 602–622, about 21 frames / 0.84 s.** Fitting
+  past 622 will drag a parabola through a ball that has already stopped.
+- The box shrinks 24 px → 11 px across the flight (it is moving away), then sits at 12–13 px in the net.
+- Frames with a suspiciously small step mid-flight — 616 (3.0 px), 618 (4.2 px), 621 (3.6 px) — are
+  label jitter, probably a repeated annotation. **A2 should decide what to do with them**; they are
+  not the ball standing still at 100 km/h.
 
 **B. The physics fit (no download).**
 - [ ] B1 [YOU] The model: `p(t) = p0 + v0·t + ½·g·t²`, with p0 = A3's kick point at z = 0 and
