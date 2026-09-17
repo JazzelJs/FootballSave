@@ -4,8 +4,8 @@ import SwiftUI
 struct Football3DApp: App {
     var body: some Scene {
         WindowGroup("Football3D") {
-            Viewer()
-                .frame(minWidth: 900, minHeight: 600)
+            ContentView()
+                .frame(minWidth: 1_100, minHeight: 650)
         }
         .windowResizability(.contentSize)
     }

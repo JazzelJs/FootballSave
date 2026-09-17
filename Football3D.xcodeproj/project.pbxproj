@@ -8,12 +8,18 @@
 /* Begin PBXBuildFile section */
 		A10000000000000000000001 /* Football3DApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* Football3DApp.swift */; };
 		A10000000000000000000002 /* Viewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* Viewer.swift */; };
+		A10000000000000000000003 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* ContentView.swift */; };
+		A10000000000000000000004 /* FootballDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* FootballDetector.swift */; };
+		A10000000000000000000005 /* football-player-detection-v9.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* football-player-detection-v9.mlpackage */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		A20000000000000000000001 /* Football3DApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Football3DApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* Viewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Viewer.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* Football3D.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Football3D.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000004 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContentView.swift; path = ../ContentView.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* FootballDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FootballDetector.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* football-player-detection-v9.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; name = "football-player-detection-v9.mlpackage"; path = data/models/football-player-detection-v9.mlpackage; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -26,10 +32,11 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		A40000000000000000000001 = {isa = PBXGroup; children = (A40000000000000000000002, A40000000000000000000003, A40000000000000000000004); sourceTree = "<group>"; };
-		A40000000000000000000002 /* Football3D */ = {isa = PBXGroup; children = (A20000000000000000000001, A20000000000000000000002); path = Football3D; sourceTree = "<group>"; };
+		A40000000000000000000001 = {isa = PBXGroup; children = (A40000000000000000000002, A40000000000000000000005, A40000000000000000000003, A40000000000000000000004); sourceTree = "<group>"; };
+		A40000000000000000000002 /* Football3D */ = {isa = PBXGroup; children = (A20000000000000000000001, A20000000000000000000002, A20000000000000000000004, A20000000000000000000005); path = Football3D; sourceTree = "<group>"; };
 		A40000000000000000000003 /* Products */ = {isa = PBXGroup; children = (A20000000000000000000003); name = Products; sourceTree = "<group>"; };
 		A40000000000000000000004 /* Supporting Files */ = {isa = PBXGroup; children = (); name = "Supporting Files"; sourceTree = "<group>"; };
+		A40000000000000000000005 /* Models */ = {isa = PBXGroup; children = (A20000000000000000000006); name = Models; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -71,7 +78,7 @@
 		A30000000000000000000004 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (A10000000000000000000001, A10000000000000000000002);
+			files = (A10000000000000000000001, A10000000000000000000002, A10000000000000000000003, A10000000000000000000004, A10000000000000000000005);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

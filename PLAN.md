@@ -10,7 +10,7 @@ Rule of thumb: if a stage takes more than ~2x the estimate, stop and ask Claude
 
 ## Current status (updated 2026-09-17) — read this first in a new chat
 
-**Where we are:** Stage 0 ✅ · Stage 1 ✅ · Stage 2 ✅ · **Stage 3: all the code is done ✅**
+**Where we are (facing direction now validated, 2026-09-18):** Stage 0 ✅ · Stage 1 ✅ · Stage 2 ✅ · **Stage 3: all the code is done ✅**
 (viewer, capsules by team, orbit + goalkeeper cameras, gaps toggle, interpolation — see the stage
 below) · **decision gate answered 2026-09-16: all three gaps matter, but body pose (Stage 4) goes
 first** · **Stage 4 SMPL-only baseline complete: one male defender pose is in the viewer ✅; KTH
@@ -227,20 +227,51 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   identifier: it correctly combines raw tracker fragments **663** and **1029**, rather than using
   raw track 171. The tracker has short gaps and ID swaps; the viewer uses a capsule in a gap rather
   than falsely joining a different player. The previous 244–369-frame attempt remains as
-  `pose_17_approach_244_369.npz` for reference. **Absolute facing direction is not yet validated:**
-  the new meshes currently use HMR2's camera-space global orientation directly (`rotationY: 0`),
-  with no camera-to-pitch yaw transform or per-player reference alignment. Their locations and body
-  articulation are available in the viewer, but do not claim that they face the goal/ball correctly.
-  A future Kaggle rerun needs the existing SoccerNet/raw-track dataset, private SMPL input, and
-  private `hmr2_cache`; enable a T4 GPU.
+  `pose_17_approach_244_369.npz` for reference. (Absolute facing was not validated at that
+  point; it is now — see the next entry.) A future Kaggle rerun needs the existing SoccerNet/raw-track
+  dataset, private SMPL input, and private `hmr2_cache`; enable a T4 GPU.
+**Absolute facing direction, done 2026-09-18:**
+- **Two bugs, one of them mine to remember.** The viewer wrote `y' = footY - y`, negating a single
+  axis. Flipping one axis is a **mirror**, not a rotation: it swaps left and right. That is what
+  `--mirror-left-right` ("HMR2 assigned the kicking leg to the wrong side") and the manual 180° on
+  track 166 were really compensating for — HMR2 was right, the viewer was mirroring it.
+- **Facing is not estimated, it is a change of basis.** HMR2 hands back a body in the coordinates of
+  the camera that saw it, and PnLCalib already fits the rotation from that camera to the pitch. New
+  `src/pose/orient.py`: `WORLD_TO_SCENE[goal] @ R_pnl.T @ crop_to_full(K, box centre)`, all three
+  determinant +1, so nothing mirrors. `crop_to_full` is the CLIFF correction: HMR2 sees a *crop*, so
+  its body sits in a camera aimed at the crop centre, not down the optical axis.
+- **Measured against the direction of travel** (`orientation_error.py`, rewritten). A running player
+  faces where they run, so motion is a usable stand-in — but only while running, which is why the old
+  45° number on the planted shooter measured nothing. `--min-speed 3.0` m/s:
+  | facing error, median / 95% | track 284 | track 17 | track 171 |
+  |---|---|---|---|
+  | samples above 3 m/s | 165 of 250 | 160 of 248 | 68 of 221 |
+  | **pitch space (new)** | **10.4° / 66.6°** | **15.2° / 52.0°** | **29.9° / 104.1°** |
+  | camera space, best possible zero | 16.8° / 68.2° | 21.2° / 107.3° | 53.2° / 177.2° |
+  The camera-space row is given the offset that *minimises its own error*, so it cannot blame tuning.
+  284 and 17 land near KTH's close-up 17.4°. Track 171 is worse and its five biggest errors are
+  frames 568–572, right where the joined track hands over — the join, not the rotation.
+- **Two things I predicted and got wrong, both checked:** (1) smoothing yaw in pitch space would beat
+  smoothing it in camera space, because a moving average in camera space also averages in the pan.
+  Measured per-frame yaw change: camera 3.4° vs pitch 3.6° on track 284 — the same. The pan is only
+  ~0.2°/frame, so it corrupts the *absolute zero*, not the frame-to-frame jitter. Windows 1 to 15
+  move the median by under 2°; 5 is kept and is nearly a no-op. (2) The shooter's 1.2° at the kick
+  looked like a win, but he has only **4 samples above 3 m/s** in 60 frames — he is planted, so his
+  number is noise either way. The three running players are the evidence.
+- **Visual:** `src/pose/draw_facing.py SNGS-043 602 284 17 171 1131` draws a 2 m yellow facing arrow
+  on the grass plus a red direction-of-travel arrow. `outputs/facing_SNGS-043_000602.jpg`: the
+  shooter faces the goal at the kick, the two arrows agree on the running players.
+- **Deleted:** `--stabilize-yaw`, `--mirror-left-right`, `--align-yaw-frame`, `rotationY`, the
+  `poseRotation` query override. Re-export with `--clip SNGS-043 --track <id> --smooth-yaw 5`.
+- **Open:** the travel-direction proxy is itself noisy (tracker jitter over 4 frames), so 10° is a
+  ceiling on what it can prove, not the true facing error. KTH is the only real ground truth.
 - **Decision:** use SMPL directly for now. Do not spend the next step retargeting the Quaternius or
   Sketchfab character; a display character would add work without improving the pose estimate.
 
 **Start the next session with:**
-1. **Next Stage 4 task:** align each goal-window player's yaw from camera coordinates to pitch
-   coordinates, use a smoothed per-player reference direction, then visually compare frames around
-   591–625 with the broadcast. This is required before claiming the three displayed bodies face the
-   right direction; the KTH facing and broadcast reprojection checks alone do not establish it.
+1. **Next Stage 4 task:** track 171's facing is 30° median against 68 running samples, and its worst
+   frames (568–572) are the hand-over inside the joined track. Check whether the join is putting two
+   different players under one id there — that is the Stage 2 team-colour idea (item 4) coming back.
 2. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
    *where* vs *who*, foot point → meters, wobble, goal side. 2026-09-16 has its `LEARNING_LOG.md`
    entry; parts of it are Claude's wording and I should rewrite those in my own words.

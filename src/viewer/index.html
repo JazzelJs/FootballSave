@@ -53,16 +53,12 @@ const clip = query.get('clip') || 'SNGS-043';
 const dataRoot = location.protocol === 'file:' ? './data' : '../../data';
 const POSES = [{
   trackId: 1131,
-  file: 'pose/mesh/pose_1131.smpl',
-  // The exported mesh preserves the turn visible in HMR2's preview, smooths its yaw over 5 frames,
-  // aligns kick frame 602 toward the attacked goal (+z), and mirrors the right-foot kick correctly.
-  // Keep an override for checking other clips without rebuilding the mesh.
-  rotationY: Number(query.get('poseRotation') ?? 0)
+  file: 'pose/mesh/pose_1131.smpl'
 },
   // The three stable players nearest the goal during clip time 00:00:15–00:00:25.
-  { trackId: 284, file: 'pose/mesh/pose_284.smpl', rotationY: 0 },
-  { trackId: 17, file: 'pose/mesh/pose_17.smpl', rotationY: 0 },
-  { trackId: 171, file: 'pose/mesh/pose_171.smpl', rotationY: 0 }
+  { trackId: 284, file: 'pose/mesh/pose_284.smpl' },
+  { trackId: 17, file: 'pose/mesh/pose_17.smpl' },
+  { trackId: 171, file: 'pose/mesh/pose_171.smpl' }
 ];
 
 const scene = new THREE.Scene();
@@ -182,7 +178,6 @@ function loadSMPL(buffer, pose) {
     color: 0xc58f70, roughness: 0.85, metalness: 0, side: THREE.DoubleSide
   }));
   pose.group = new THREE.Group();
-  pose.group.rotation.y = pose.rotationY;
   pose.group.add(pose.mesh);
   scene.add(pose.group);
   pose.smpl = { frames, vertices, vertexCount, fps,
@@ -212,12 +207,15 @@ function drawSMPL(pose, frame) {
   if (!sample || !player) { pose.group.visible = false; return false; }
   const startA = sample.a * pose.smpl.vertexCount * 3, startB = sample.b * pose.smpl.vertexCount * 3;
   const position = pose.mesh.geometry.attributes.position;
-  let footY = -Infinity;
+  // export_smpl_mesh.py --clip already writes the body in these axes (x, up, -pitch y), so the
+  // only thing left is to stand it on the grass. Negating y here instead would MIRROR the body:
+  // flipping one axis swaps left and right, which is what used to need a per-clip 180 deg fix.
+  let footY = Infinity;
   const value = j => pose.smpl.vertices[startA + j] * (1 - sample.mix) + pose.smpl.vertices[startB + j] * sample.mix;
-  for (let j = 1; j < position.array.length; j += 3) footY = Math.max(footY, value(j));
+  for (let j = 1; j < position.array.length; j += 3) footY = Math.min(footY, value(j));
   for (let j = 0; j < position.array.length; j += 3) {
     position.array[j] = value(j);
-    position.array[j + 1] = footY - value(j + 1);
+    position.array[j + 1] = value(j + 1) - footY;
     position.array[j + 2] = value(j + 2);
   }
   position.needsUpdate = true;
