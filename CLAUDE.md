@@ -104,6 +104,8 @@ Don't write the explanation for me — correct it if it's wrong.
 | `data/soccernet/<clip>/` | SoccerNet GSR clips (frames + labels), SNGS-028/043/033 | `src/track/fetch_soccernet.py <clip>` |
 | `data/soccernet_frames.zip` | SNGS-028 + SNGS-043 frames zipped for Kaggle (344 MB) | `cd data/soccernet && zip -0 -r ../soccernet_frames.zip SNGS-028/img1 SNGS-043/img1` |
 | `data/kth/sequence2/` | KTH Football II, one sequence (Stage 4) | see PLAN.md → Resources |
+| `data/models/yolo-sn-ball-opt.pt` | SoccerNet-v3D ball detector (49 MB, GPL-2.0) | `curl -L -o data/models/yolo-sn-ball-opt.pt https://github.com/mguti97/SoccerNet-v3D/releases/download/v1.0.0/yolo-sn-ball-opt.pt` |
+| `data/snv3d/SNv3D.csv` | SoccerNet-v3D ball ground truth (3.6 MB, 4051 rows) | same release, `.../download/v1.0.0/SNv3D.csv` |
 | `outputs/` | pictures and videos | rerun the script that made them |
 
 ## Code layout
