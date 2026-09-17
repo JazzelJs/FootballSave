@@ -13,7 +13,8 @@ Rule of thumb: if a stage takes more than ~2x the estimate, stop and ask Claude
 **Where we are:** Stage 0 ✅ · Stage 1 ✅ · Stage 2 ✅ · **Stage 3: all the code is done ✅**
 (viewer, capsules by team, orbit + goalkeeper cameras, gaps toggle, interpolation — see the stage
 below) · **decision gate answered 2026-09-16: all three gaps matter, but body pose (Stage 4) goes
-first** · **Stage 4 SMPL-only baseline complete: one male defender pose is in the viewer ✅.**
+first** · **Stage 4 SMPL-only baseline complete: one male defender pose is in the viewer ✅; KTH
+ground-truth validation is in progress.**
 Where the pipeline stands, measured against SoccerNet ground truth: position **0.70 m / 0.48 m**
 median (SNGS-028 / SNGS-043), 16–17% of players missed, **6.1 / 5.5** of our track ids per real
 player, **96% / 89%** of outfield players given the right team. The remaining error is the camera,
@@ -200,22 +201,32 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
 - **KTH readiness:** `data/kth/sequence2/` is already present (175 frames, 3 cameras, 14 joints).
   Its supplied cameras reproject the supplied 3D joints to the supplied 2D labels at **5.7 px median**
   (**17.8 px at the 95th percentile**); use Camera 1 as the first HMR2 benchmark input.
+- **KTH Kaggle run, completed 2026-09-17:** `sequence2.zip` was prepared at
+  `data/kaggle/sequence2.zip` and attached as the Kaggle **kth dataset**. The notebook now finds the
+  175 Camera 1 PNGs and the private SMPL model correctly. Its setup installs HMR2 from its own package
+  metadata (rather than adding modules one by one), and its checkpoint cell uses HMR2's
+  `download_models()` cache layout. HMR2 processed all **175/175** frames. The outputs are
+  `data/models/kth_camera1_pose.npz` (24 joints, 6,890 vertices per frame) and
+  `data/models/kth_camera1_preview.mp4` (512×256, 25 fps, 175 frames / 7.0 s). **KTH checkpoint
+  complete:** `uv run python src/pose/eval_kth.py` maps the 24 HMR2 joints to KTH's 14 LSP joints.
+  PA-MPJPE is **113.3 mm mean / 101.4 mm median** over 175 frames. Facing error is **17.4° mean /
+  14.2° median / 42.9° at the 95th percentile**, after one sequence-wide similarity alignment. This
+  is the close-up best case, not a claim for the much smaller broadcast players.
 - **Decision:** use SMPL directly for now. Do not spend the next step retargeting the Quaternius or
   Sketchfab character; a display character would add work without improving the pose estimate.
 
 **Start the next session with:**
 1. Add 2D keypoints for track 1131 and measure actual SMPL-joint reprojection error; the current
    11.6 px number checks only the ground anchor.
-2. Run the same pose model on one KTH Football II camera and compute PA-MPJPE plus facing error.
-3. Only after those checks, decide whether the display needs another orientation adjustment.
-4. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
+2. Only after those checks, decide whether the display needs another orientation adjustment.
+3. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
    *where* vs *who*, foot point → meters, wobble, goal side. 2026-09-16 has its `LEARNING_LOG.md`
    entry; parts of it are Claude's wording and I should rewrite those in my own words.
-5. Open questions I haven't answered yet (no rush, they're small):
+4. Open questions I haven't answered yet (no rush, they're small):
    - (B)'s biggest error is exactly 3.00 m while (A)'s is 12.9 m. Why, and what does that do to
      comparing (B) with (A)?
    - If PnLCalib gave a perfect camera tomorrow, which file changes: `data/track/…` or `data/tracks/…`?
-6. Left in Stage 2 on purpose, to pick up when it matters: use the team colours to refuse a join or a
+5. Left in Stage 2 on purpose, to pick up when it matters: use the team colours to refuse a join or a
    tracker hand-over between two different kits (69% of ID switches are swaps, which joining can't fix).
 
 **Pipeline for a clip, as it runs today** (all from the repo root, all local on the Mac):
