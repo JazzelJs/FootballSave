@@ -188,4 +188,39 @@ The higher the body part, the farther back it lands: the head ends up meters beh
     weakness, but confident and wrong.
 - **Still confused about:** _(mine to fill in)_
 - **Decision gate, my answer:** all three of them matter, but **body pose first** → Stage 4.
-- **Next step:** Stage 4, body pose. The 2026-09-15 wrap-up is **still** owed.
+
+### 2026-09-17 — Stage 4: one defender's SMPL pose
+- **What I did:** Ran official 4DHumans/HMR2 on Kaggle for track 166 in SNGS-043, then brought the
+  result into the local viewer. Track 166 is a **defender**, not the shooter. Added a browser-readable
+  joints file, a close pose view, and a separate orbit-view restore button.
+- **What I learned (explain like to a friend):** The pose model estimates the shape and movement of
+  a person from a crop; the tracking pipeline tells us where that person stands on the pitch. The
+  two results have to be combined. HMR2's exported vertical axis was opposite to the viewer's, so
+  the head and feet had to be checked numerically before flipping the axis. Facing left is currently
+  a manual 180° display rotation; it is not yet an automatic facing-direction measurement.
+- **Numbers / results:** Kaggle processed **60/60** frames, 560–619. The NPZ contains 24 joints and
+  6,890 vertices for each frame. The local output files are `data/pose_166.npz` and
+  `data/pose_166.json`. The viewer shows the pose at about 22.4–24.7 seconds and frame 602 is about
+  24.0 seconds.
+- **Still confused about:** whether the HMR2 orientation can be trusted for a small broadcast crop,
+  and how the Sketchfab character's armature maps to SMPL's 24 joints.
+- **Next step:** Run the same HMR2 export on the likely shooter (true track 18) around kick frame 602,
+  then check whether HMR2's global orientation can replace the viewer's manual 180° rotation.
+
+### 2026-09-17 (part 2) — Stage 4 SMPL-only handoff
+- **What I did:** Re-ran the Kaggle export after fixing the HMR2 setup and video writer. The final
+  file is `data/pose_166-2.npz`; it includes `global_orient_rotmat`, `body_pose_rotmat`, and
+  `betas`. Converted it to `data/pose_166.smpl` and kept the preview as
+  `data/pose_166_preview.mp4`. Fixed the browser's Three.js import paths after the viewer hung on
+  404s for `three.module.js` and `OrbitControls.js`.
+- **What I learned (explain like to a friend):** A broken pipe from ffmpeg usually means ffmpeg
+  failed before it received a frame. Here the output folder/path and then the browser's missing
+  vendor modules were the real problems; the pipe error was only the symptom. The NPZ can contain
+  both the already-generated vertices and the rotation/shape values needed to rebuild the body.
+- **Numbers / results:** HMR2 processed 60 frames (560–619). The new NPZ has shapes
+  `(60, 1, 3, 3)`, `(60, 23, 3, 3)`, and `(60, 10)` for the three SMPL variables. The viewer now
+  reports `SNGS-043 — 750 frames — SMPL body loaded for track 166`.
+- **Still confused about:** whether HMR2's global orientation is reliable enough on this small
+  broadcast crop, and how much the pose changes when the actual shooter is used.
+- **Next step:** Run track 18 through the same notebook, compare it with the ball at frame 602, and
+  add the ball to the viewer before starting Stage 5 camera/ball work.

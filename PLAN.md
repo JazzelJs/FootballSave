@@ -8,12 +8,12 @@ Rule of thumb: if a stage takes more than ~2x the estimate, stop and ask Claude
 
 ---
 
-## Current status (updated 2026-09-16) — read this first in a new chat
+## Current status (updated 2026-09-17) — read this first in a new chat
 
 **Where we are:** Stage 0 ✅ · Stage 1 ✅ · Stage 2 ✅ · **Stage 3: all the code is done ✅**
 (viewer, capsules by team, orbit + goalkeeper cameras, gaps toggle, interpolation — see the stage
 below) · **decision gate answered 2026-09-16: all three gaps matter, but body pose (Stage 4) goes
-first** · **Stage 4 = next.**
+first** · **Stage 4 SMPL-only baseline complete: one male defender pose is in the viewer ✅.**
 Where the pipeline stands, measured against SoccerNet ground truth: position **0.70 m / 0.48 m**
 median (SNGS-028 / SNGS-043), 16–17% of players missed, **6.1 / 5.5** of our track ids per real
 player, **96% / 89%** of outfield players given the right team. The remaining error is the camera,
@@ -156,9 +156,11 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   clip04 and **0 of 132 / 0 of 122** on the SoccerNet clips, where every number stayed identical.
   A rule that never fires on the clips with ground truth cannot be validated — not added.
 
-**Stage 4 started 2026-09-16 (nothing downloaded, nothing run yet):**
-- **The shooter on SNGS-043 is our track id 166** (455 frames, 155–614; it dies 12 frames after the
-  kick and id 1174 takes over). True track_id 22 in the labels.
+**Stage 4 baseline completed 2026-09-17:**
+- **Track 166 is a defender, not the shooter** (455 frames, 155–614; true track_id 22, team
+  `right` = the goalkeeper's team). It was picked as the player nearest the ball at the kick, but it
+  was closing down. **The shooter is not identified yet:** up to frame 596 the ball is nearest
+  `left`-team true id 18 (#33) — confirm on frames 590–602 before running pose on them.
 - **The kick is frame 602.** Found from the ball's *pixel* speed (2.2 → 48.3 px/frame), not meters:
   the labels' ball `bbox_pitch` is the ground projection of a flying ball, so in meters the "speed"
   ramps smoothly 0 → 23 m/s over 35 frames and hides the kick completely. Keep for Stage 5.
@@ -166,7 +168,7 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   ball already exists on the SoccerNet clips.
 - **Crop size, the number that decides Stage 4's ceiling:** id 166's box over frames 560–620 is a
   median **78 px tall, 40 px wide** (min 48, max 90). This stage's checkpoint assumed 100–200 px.
-  Pose models want 256×256, so the shooter gets upscaled ~3×. KTH (player fills a 480×640 frame)
+  Pose models want 256×256, so the defender gets upscaled ~3×. KTH (player fills a 480×640 frame)
   is the best case by a wider margin than planned.
 - **Open, not answered:** do we need the real SMPL model files (free registration, academic
   licence), or is a joints-only 3D pose model enough for the checkpoint numbers (facing direction,
@@ -175,18 +177,32 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   cannot produce pose and changes no number. Decide before downloading anything.
 - **Also open:** GVHMR or 4DHumans. It changes the input: 4DHumans wants per-frame crops, GVHMR
   wants the video plus a track and also estimates camera motion. GPU work goes to **Kaggle**.
+- **Kaggle result:** official 4DHumans/HMR2 processed **60/60 crops** for defender track 166,
+  frames 560–619. The output has 24 joints and 6,890 vertices per frame in `data/pose_166.npz`.
+  A small standard-library converter writes the 24 joints to `data/pose_166.json` for the browser.
+- **Viewer result:** the male SMPL mesh is anchored to track 166's pitch position and animated in
+  the browser. The viewer reads `data/pose_166.smpl`, generated from the newer NPZ with HMR2's
+  rotation matrices and betas. The preview video is `data/pose_166_preview.mp4`. HMR2's exported
+  Y axis needed flipping; the body is manually rotated 180° so this defender faces left. That
+  facing correction is a display setting, not yet a learned orientation estimate. The viewer's
+  Three.js imports now point to `Football3D/vendor/`.
+- **Decision:** use SMPL directly for now. Do not spend the next step retargeting the Quaternius or
+  Sketchfab character; a display character would add work without improving the pose estimate.
 
 **Start the next session with:**
-1. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
+1. Run HMR2 on the likely shooter (true track `18`, around frames 560–620) instead of defender
+   track `166`, then compare the pose with the ball at kick frame 602.
+2. Keep the SMPL mesh and tracked pitch position together; replace the manual 180° facing correction
+   with a documented/configurable orientation once HMR2's global orientation is checked.
+3. Add the ball to the 3D viewer and connect the kick frame to the shooter's pose.
+4. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
    *where* vs *who*, foot point → meters, wobble, goal side. 2026-09-16 has its `LEARNING_LOG.md`
    entry; parts of it are Claude's wording and I should rewrite those in my own words.
-2. **Answer the Stage 3 decision gate** (see the stage below) and pick Stage 4 (body pose) or
-   Stage 5 (the ball in 3D). The evidence is above: no ball in meters, and capsules have no facing.
-3. Open questions I haven't answered yet (no rush, they're small):
+5. Open questions I haven't answered yet (no rush, they're small):
    - (B)'s biggest error is exactly 3.00 m while (A)'s is 12.9 m. Why, and what does that do to
      comparing (B) with (A)?
    - If PnLCalib gave a perfect camera tomorrow, which file changes: `data/track/…` or `data/tracks/…`?
-4. Left in Stage 2 on purpose, to pick up when it matters: use the team colours to refuse a join or a
+6. Left in Stage 2 on purpose, to pick up when it matters: use the team colours to refuse a join or a
    tracker hand-over between two different kits (69% of ID switches are swaps, which joining can't fix).
 
 **Pipeline for a clip, as it runs today** (all from the repo root, all local on the Mac):
@@ -451,9 +467,8 @@ and open `/src/viewer/?clip=SNGS-043` — `file://` fails, fetch is blocked ther
 - ~~You can watch the clip in 3D from the goalkeeper position.~~ Done 2026-09-16 (`1751ac5`,
   `313262e`, `a1c3f37`).
 
-**Decision gate (be honest):** Is the goalkeeper view useful with just capsules? Which
-missing information hurts most — body pose, the ball, or off-screen players? Use the
-answer to choose between Stage 4 and Stage 5 next.
+**Decision gate (answered 2026-09-16):** The goalkeeper view is useful for camera framing, but
+capsules do not show facing or body action. All three gaps matter; body pose comes before the ball.
 
 ---
 
@@ -471,9 +486,14 @@ answer to choose between Stage 4 and Stage 5 next.
   scale and translation — measures pose shape only).
 
 **Build**
+- ~~[TOGETHER] Run HMR2 on one tracked player and export SMPL joints.~~ Done 2026-09-17 on Kaggle
+  for defender track 166, frames 560–619.
+- ~~[TOGETHER] Show the joints in the viewer.~~ Done 2026-09-17 with a browser-readable JSON
+  export, pitch anchoring, close pose view, and orbit-view restore.
+- [TOGETHER] Import the Sketchfab character, inspect its armature, and retarget the SMPL joints.
 - [TOGETHER] **Kaggle** notebook (not Colab): run a single-view model (e.g. GVHMR or 4DHumans) on
-  crops of 1–3 key players. **The shooter on SNGS-043 = our track id 166, kick at frame 602, box
-  median 78 px tall** (see Current status). Needs SMPL model files (free registration) — or a
+  crops of 1–3 key players (the shooter first — **not identified yet**; track 166 turned out to be
+  a defender, see Current status). Needs SMPL model files (free registration) — or a
   joints-only model instead, still to be decided.
   Export per-frame pose to `pose_<track_id>.npz`.
 - [YOU] Anchor each body: root position = Stage 2 pitch position, pose from the model.
@@ -494,7 +514,8 @@ answer to choose between Stage 4 and Stage 5 next.
 **Checkpoint**
 - Shooter's pose reprojects within a reasonable pixel error (report the number).
 - PA-MPJPE on KTH (report the number). Treat it as a **best case**: KTH players fill the
-  frame, your broadcast shooter is ~100–200 px tall.
+  frame, your broadcast players are far smaller (track 166: median 78 px tall, not the 100–200 px
+  this plan assumed).
 - You can state how wrong the facing direction is on average, vs KTH ground truth and
   vs running direction on your clip.
 

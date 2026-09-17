@@ -27,14 +27,16 @@ Playback interpolates between frames, so motion is smooth on any screen.
   <button id="play">▶</button>
   <input id="scrub" type="range" min="0" value="0" step="1">
   <span id="clock">0.0 s</span>
+  <button id="poseView">pose view</button>
+  <button id="orbitView">orbit view</button>
   <button id="view">goal view</button>
   <button id="gaps">show gaps</button>
 </div>
 
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  "three": "./vendor/three.module.js",
+  "three/addons/controls/": "./vendor/"
 } }
 </script>
 <script type="module">
@@ -46,6 +48,8 @@ const HALF_W = 34, LENGTH = 105, BOX_W = 40.32, BOX_D = 16.5, GOAL_AREA_W = 18.3
       GOAL_AREA_D = 5.5, GOAL_W = 7.32, GOAL_H = 2.44, SPOT = 11, ARC_R = 9.15, CIRCLE_R = 9.15;
 
 const clip = new URLSearchParams(location.search).get('clip') || 'SNGS-043';
+// The macOS bundle stages data beside this file; the development server keeps the repo layout.
+const dataRoot = location.protocol === 'file:' ? './data' : '../../data';
 
 const scene = new THREE.Scene();
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -143,6 +147,57 @@ function drawPlayers(players) {
   for (let i = players.length; i < pool.length; i++) pool[i].visible = false;
 }
 
+// ---- Stage 4 SMPL mesh -----------------------------------------------------
+// HMR2 already produced the posed 6890-vertex body. Draw it directly instead
+// of approximating its motion on a second character skeleton.
+const smplGroup = new THREE.Group();
+smplGroup.rotation.y = Math.PI;
+scene.add(smplGroup);
+let smpl = null, smplMesh = null;
+
+function loadSMPL(buffer) {
+  const view = new DataView(buffer);
+  const magic = String.fromCharCode(...new Uint8Array(buffer, 0, 4));
+  if (magic !== 'SMPL') throw new Error('invalid SMPL mesh file');
+  const frameCount = view.getUint32(4, true), vertexCount = view.getUint32(8, true);
+  const faceCount = view.getUint32(12, true), fps = view.getFloat32(16, true);
+  let offset = 20;
+  const frames = new Int32Array(buffer, offset, frameCount); offset += frames.byteLength;
+  const faces = new Uint32Array(buffer, offset, faceCount * 3); offset += faces.byteLength;
+  const vertices = new Float32Array(buffer, offset, frameCount * vertexCount * 3);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setIndex(new THREE.BufferAttribute(faces, 1));
+  geometry.setAttribute('position', new THREE.BufferAttribute(
+    new Float32Array(vertexCount * 3), 3).setUsage(THREE.DynamicDrawUsage));
+  smplMesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+    color: 0xc58f70, roughness: 0.85, metalness: 0, side: THREE.DoubleSide
+  }));
+  smplGroup.add(smplMesh);
+  smpl = { frames, vertices, vertexCount, fps,
+    byFrame: new Map(Array.from(frames, (frame, index) => [frame, index])) };
+}
+
+function drawSMPL(frame) {
+  const trackFrame = data.frames.find(f => f.frame === frame);
+  const player = trackFrame?.players.find(p => p.id === 166);
+  const index = smpl?.byFrame.get(frame);
+  if (index === undefined || !player) { smplGroup.visible = false; return; }
+  const start = index * smpl.vertexCount * 3;
+  const source = smpl.vertices.subarray(start, start + smpl.vertexCount * 3);
+  const position = smplMesh.geometry.attributes.position;
+  let footY = -Infinity;
+  for (let j = 1; j < source.length; j += 3) footY = Math.max(footY, source[j]);
+  for (let j = 0; j < source.length; j += 3) {
+    position.array[j] = source[j];
+    position.array[j + 1] = footY - source[j + 1];
+    position.array[j + 2] = source[j + 2];
+  }
+  position.needsUpdate = true;
+  smplMesh.geometry.computeVertexNormals();
+  smplGroup.position.set(player.x, 0, -player.y);
+  smplGroup.visible = true;
+}
+
 // ---- players the tracker lost ----------------------------------------------
 // A player is "in a gap" when their id was seen earlier and comes back later, but is
 // missing right now: the detector lost them, they didn't leave. We can only show where
@@ -196,7 +251,10 @@ function playersAt(f) {
 function show(f) {
   i = Math.max(0, Math.min(data.frames.length - 1, f));
   const k = Math.round(i);
-  drawPlayers(playersAt(i));
+  const frame = data.frames[k].frame;
+  const players = playersAt(i);
+  drawPlayers(smpl?.byFrame.has(frame) ? players.filter(p => p.id !== 166) : players);
+  drawSMPL(frame);
   drawGaps(k);
   scrub.value = k;
   clock.textContent = (i / data.fps).toFixed(1) + ' s'
@@ -213,9 +271,34 @@ gapsBtn.onclick = () => {
 const view = document.getElementById('view');
 view.onclick = () => {
   active = active === camera ? gkCam : camera;
+  if (active === camera) restoreOrbit();
   controls.enabled = active === camera;               // don't let a drag move a camera you can't see
   view.textContent = active === camera ? 'goal view' : 'orbit view';
 };
+
+const orbitPosition = camera.position.clone();
+const orbitTarget = controls.target.clone();
+function restoreOrbit() {
+  active = camera;
+  camera.position.copy(orbitPosition);
+  controls.target.copy(orbitTarget);
+  controls.enabled = true;
+  controls.update();
+}
+
+const poseView = document.getElementById('poseView');
+poseView.onclick = () => {
+  const frame = data.frames[Math.round(i)].frame;
+  const player = data.frames.find(f => f.frame === frame)?.players.find(p => p.id === 166);
+  if (!player) return;
+  active = camera;
+  controls.enabled = true;
+  camera.position.set(player.x + 4, 2.8, -player.y + 6);
+  controls.target.set(player.x, 0.9, -player.y);
+  controls.update();
+  view.textContent = 'goal view';
+};
+document.getElementById('orbitView').onclick = restoreOrbit;
 
 play.onclick = () => { playing = !playing; play.textContent = playing ? '❚❚' : '▶'; last = performance.now(); };
 scrub.oninput = () => { playing = false; play.textContent = '▶'; show(+scrub.value); };
@@ -250,15 +333,20 @@ function checkInterp() {
   console.log(`interp check: ok (id ${a.id} x ${a.x.toFixed(2)} -> ${mid.x.toFixed(2)} -> ${b.x.toFixed(2)})`);
 }
 
-fetch(`../../data/tracks/${clip}.json`)
-  .then(r => r.ok ? r.json() : Promise.reject(r.status))
-  .then(d => {
+Promise.all([
+  fetch(`${dataRoot}/tracks/${clip}.json`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+  fetch(`${dataRoot}/pose_166.smpl`).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
+])
+  .then(([d, mesh]) => {
     data = d;
+    loadSMPL(mesh);
     gaps = findGaps(d.frames);
     scrub.max = d.frames.length - 1;
-    msg.textContent = `${d.clip} — ${d.frames.length} frames at ${d.fps} fps`;
-    show(0);
+    msg.textContent = `${d.clip} — ${d.frames.length} frames — SMPL body loaded for track 166`;
+    const firstPoseIndex = d.frames.findIndex(f => smpl.byFrame.has(f.frame));
+    show(firstPoseIndex >= 0 ? firstPoseIndex : 0);
+    if (firstPoseIndex >= 0) poseView.onclick();
     checkInterp();
   })
-  .catch(e => { msg.textContent = `could not load data/tracks/${clip}.json (${e}) — serve the repo root`; });
+  .catch(e => { msg.textContent = `could not load viewer data (${e}) — serve the repo root`; });
 </script>
