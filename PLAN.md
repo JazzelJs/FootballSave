@@ -193,6 +193,10 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   camera + pitch anchoring, not the still-open SMPL-joint reprojection checkpoint.
 - **Ball:** calibrated pixel labels are shown in 3D while present. They stop at frame 590; no invented
   post-label flight is shown.
+- **Facing-vs-running proxy:** over 32 moving samples, the adjusted pose differs from the track
+  direction by **45.1° median**, **64.9° mean**, and **164.5° at the 95th percentile**. This is not
+  a valid facing ground truth for this kick because the shooter is mostly planted; use image keypoints
+  or KTH 3D ground truth before changing the orientation again.
 - **Decision:** use SMPL directly for now. Do not spend the next step retargeting the Quaternius or
   Sketchfab character; a display character would add work without improving the pose estimate.
 
