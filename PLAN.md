@@ -212,21 +212,28 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   PA-MPJPE is **113.3 mm mean / 101.4 mm median** over 175 frames. Facing error is **17.4° mean /
   14.2° median / 42.9° at the 95th percentile**, after one sequence-wide similarity alignment. This
   is the close-up best case, not a claim for the much smaller broadcast players.
+- **Broadcast SMPL reprojection check, completed 2026-09-17:** `yolo11n-pose.pt` detects 2D joints
+  only after track 1131 is cropped and enlarged (at full frame it finds zero people: the shooter is
+  ~70 px tall). `uv run python src/pose/reproject_smpl.py SNGS-043 1131` anchors the average SMPL
+  ankle at the calibrated Stage 2 grass point and sends the 3D joints through PnLCalib's full camera.
+  Across 39 usable frames / 457 detector-confident joint matches, the error is **19.7 px median /
+  23.2 px mean / 46.0 px at the 95th percentile**. `outputs/smpl_reprojection_SNGS-043_1131_000602.jpg`
+  visibly puts green SMPL joints close to red 2D detector joints at the kick. This is model-vs-model
+  agreement, not labeled ground truth; occluded limbs and the 2D detector itself set its floor.
 - **Decision:** use SMPL directly for now. Do not spend the next step retargeting the Quaternius or
   Sketchfab character; a display character would add work without improving the pose estimate.
 
 **Start the next session with:**
-1. Add 2D keypoints for track 1131 and measure actual SMPL-joint reprojection error; the current
-   11.6 px number checks only the ground anchor.
-2. Only after those checks, decide whether the display needs another orientation adjustment.
-3. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
+1. Decide whether the display needs another orientation adjustment. The KTH facing result and broadcast
+   reprojection result now give the evidence needed for that decision.
+2. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
    *where* vs *who*, foot point → meters, wobble, goal side. 2026-09-16 has its `LEARNING_LOG.md`
    entry; parts of it are Claude's wording and I should rewrite those in my own words.
-4. Open questions I haven't answered yet (no rush, they're small):
+3. Open questions I haven't answered yet (no rush, they're small):
    - (B)'s biggest error is exactly 3.00 m while (A)'s is 12.9 m. Why, and what does that do to
      comparing (B) with (A)?
    - If PnLCalib gave a perfect camera tomorrow, which file changes: `data/track/…` or `data/tracks/…`?
-5. Left in Stage 2 on purpose, to pick up when it matters: use the team colours to refuse a join or a
+4. Left in Stage 2 on purpose, to pick up when it matters: use the team colours to refuse a join or a
    tracker hand-over between two different kits (69% of ID switches are swaps, which joining can't fix).
 
 **Pipeline for a clip, as it runs today** (all from the repo root, all local on the Mac):
