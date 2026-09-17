@@ -272,18 +272,18 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
 1. **Stage 4 checkpoint is complete** (19.7 px reprojection · 113.3 mm PA-MPJPE · facing stated both
    ways). Owed before it closes, both mine: the three "Explain it back" answers, and the
    `LEARNING_LOG.md` wrap-up for 2026-09-15.
-2. **Stage 5: A, B, C, D2 and E2 are done (2026-09-18); D1 and E1's kick frame are mine.**
+2. **Stage 5: A, B, C, D and E2 are done (2026-09-18); only E1's kick frame is left.**
    All of it was written by Claude on my "just do it" / "do it for me" under time pressure, so the
    whole stage owes me the walk-through and the "Explain it back".
    Headline: the shot is fitted in 3D from one camera at **3.70 px median reprojection**,
    **117 km/h**, crossing the goal line **0.42 m inside the post** — a goal, which is free ground
    truth nobody annotated. Pipeline: `from_labels.py` → `clean.py` → `fit.py` → `draw.py`, and
    `detect.py --write` in place of labels on a clip that has none.
-   **My two next actions, both small:**
-   - **D1**: fill in the three `TODO(human)`s in `src/ball/size_baseline.py` (the data is
-     downloaded). Watch the two traps named in its docstring.
-   - **E1**: watch `outputs/ball_clip04_detected.mp4`, pick clip04's kick frame, then
-     `fit.py clip04 --kick <frame>`.
+   **One action left, and it needs my eyes, not code:** watch
+   `outputs/ball_clip04_detected.mp4`, pick clip04's kick frame, then
+   `uv run python src/ball/fit.py clip04 --kick <frame>` and add it to `KICK` in `fit.py`.
+   Remember C2 inverts for clip04 — it is a *near miss*, so a correct fit puts the ball just
+   OUTSIDE the posts.
    **The four things in this stage I should be able to explain before it closes:**
    - Why the unconstrained fit chose 272 km/h *into the ground*, and why `vz ≥ 0` is a
      measurement-free fact that fixes it.
@@ -292,10 +292,14 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
    - Why free flight ends at the goal line (617) and not where the pixel step collapses (622).
    - Why binning "objects that never move" in pixels found nothing, and in metres found the
      culprit — and what that says about every other per-pixel rule in this repo.
+   - Why depth-from-size is wrong by a fixed *percentage* of the distance rather than a fixed
+     number of metres, and why a correction factor could not fix it.
    **Known soft spots, stated rather than hidden:** k = 0.046 1/m is 3.5× a real ball's, so drag
    is absorbing other errors; C2's 0.42 m margin is smaller than our camera's 2.25 m error at the
    ball; C3's shadow plot is dominated by that same camera offset, so it cannot measure height on
-   this clip; and the ball detector's whole-clip recall is only 53% even at native resolution.
+   this clip; the ball detector's whole-clip recall is only 53% even at native resolution; and
+   PLAN.md's 4.2 m figure for depth-from-size does not survive contact with the data (we measure
+   17.9 m), so the baseline our fit "had to beat" was set four times too kindly.
 3. **Parked, not blocking:** track 171's facing is 30° median over 68 running samples and its worst
    frames (568–572) are the hand-over inside the joined track. That is a tracking problem, and it is
    the Stage 2 team-colour idea coming back.
@@ -786,14 +790,46 @@ in **738 of 750 frames**, missing 367 and 476–481 and 558–562; the box is **
 `data/models/yolo-sn-ball-opt.pt` (49 MB, GPL-2.0, one class `ball`) and `data/snv3d/SNv3D.csv`
 (3.6 MB, 4051 rows). Beware the release also holds `yolo-sn-ball.pt` (same size, un-tuned) and
 `yolo-issia-ball-opt.pt` (153 MB, other dataset) — we want the `-opt` SN one.
-- [ ] D1 [YOU] **skeleton ready: `src/ball/size_baseline.py`**, three `TODO(human)` functions and a
-  `--self-check`. `distance ≈ f · 0.22 / d_px` vs their `ball_3D`; the paper says 4.2 m mean. On our
-  clip 1 px of box error costs **1.3 m at frame 602 and 6.9 m at frame 620**. Format facts are in
-  the file's docstring — the one that will bite: `calibration` is a **Python** dict (single quotes,
-  so `ast.literal_eval`, not `json.loads`) with exactly PnLCalib's keys, so `camera_matrix()` takes
-  it unchanged; and `ball_bbox` on a *round* ball is 26.76 wide by 16.80 tall, so one of those two
-  is the diameter and one is not. *Also note: our fit's 3.70 px is NOT comparable to 4.2 m — one is
-  an image error, one is a 3D error. The comparable number is the depth the two methods disagree by.*
+- [x] D1 **done 2026-09-18** (`src/ball/size_baseline.py`; Claude wrote it on my "do it for me",
+  walk-through owed to me). **The answer is not the one this plan assumed.**
+  | depth-from-size on SNv3D.csv | mean | median | as % of the distance |
+  |---|---|---|---|
+  | train (3241 rows) | 17.57 m | 14.14 m | 20.2% |
+  | **test (810 rows, held out)** | **17.88 m** | **14.89 m** | **20.8%** |
+  **~4× worse than the 4.2 m this plan credits to "this per-frame method".** The error is a fixed
+  *share* of the distance in every band (19–22% from 25 m to 1000 m), which is the signature of a
+  scale error, not noise. Two causes, measured:
+  1. **The boxes are 23% bigger than the ball.** The geometry demands a median 11.99 px diameter
+     at these distances; the annotations give 15.50 px. A generous box means a too-near ball, and
+     `estimate/true` is 0.813 on median — biased low, exactly as that predicts.
+  2. **Correcting the bias barely helps.** One factor fitted on train (k = 1.232), applied to
+     test: mean 17.88 → 16.55 m, median 14.89 → 12.20 m. So the *per-row scatter* is the real
+     problem, not the bias. With the ball 12–15 px wide, 1.5 px of annotation slop is ~12% of the
+     diameter and therefore ~12% of the distance. This method cannot be rescued by calibration.
+  **So the 4.2 m is probably not this formula, and I should stop quoting it as such.** The csv also
+  carries `optimized_d`, which is **not** a camera-to-ball distance (17.1 m where the true distance
+  is 77.3 m, and the ratio is not constant), so the paper is reporting some refined quantity.
+  **Two format traps, both settled by measurement rather than assumption** (and both of Claude's
+  first guesses in the skeleton were wrong, which is worth remembering):
+  - `ball_bbox` (x, y) is the **centre**, not the top-left: projecting `ball_3D` through the
+    calibration lands **2.77 px** from the centre and 12.94 px from the corner. That same check
+    also proves `ball_3D` and `calibration` share one coordinate frame.
+  - The skeleton claimed w and h differ a lot on a round ball (from row 0, 26.76 × 16.80). Across
+    all 4051 rows **w ≈ h** (median 17.26 vs 16.73, ratio 1.02) — row 0 was an outlier. `min(w, h)`
+    is still the right pick, because inflation can only ever make a box *bigger* than the ball:
+    measured test mean error is min 17.9 m, height 20.4, width 21.5, max(w, h) 24.3.
+  - `calibration` is a **Python** dict (single quotes → `ast.literal_eval`), with exactly
+    PnLCalib's keys, so `camera_matrix()` takes it unchanged. `x_focal_length == y_focal_length`
+    in 100% of rows, so the choice of focal is moot.
+- [x] **"Compare on your clip: physics fit vs per-frame size-based depth"** (the last Build item),
+  in the same script. Over the 16 flight frames of SNGS-043 the two methods **disagree by 6.0 m
+  mean / 6.9 m median**. Depth-from-size has the ball receding 55.9 → 91.4 m; the fit says
+  65.7 → 82.0 m. Size-based is biased *low* early (55.9 vs 65.7 at the kick) exactly as the 23%
+  box inflation predicts, and it jitters ±10 m frame to frame because every frame is an
+  independent guess off an 11–25 px box. **Which to trust: the fit** — not because it is prettier,
+  but because it is checkable (3.70 px reprojection, and it puts the ball inside the posts) while
+  depth-from-size has no way to be wrong *quietly*. Neither is ground truth: SNGS-043 has no 3D
+  ball truth, so this measures disagreement, not accuracy.
 - [x] D2 **done 2026-09-18, `src/ball/detect.py`.** Detection rate on SNGS-043, where the labels say
   exactly which 738 frames hold a ball. `conf` 0.10 deliberately low, a hit is within 25 px.
   | imgsz | ball found | centre error (median) | false alarms /12 | time |
