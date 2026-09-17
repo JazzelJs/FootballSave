@@ -147,7 +147,12 @@ def main(clip, single=None):
         path.unlink()
     scratch.rmdir()
     print(f"wrote {video} ({written} frames at 8 fps, slowed down from {r['fps']})")
-    print(f"wrote {shadow_plot(clip, r, ball_rows)}")
+    # C3 needs the labels' own ground shadow, which only a SoccerNet clip has. clip04's rows
+    # come from a detector, so there is nothing to plot ours against and no plot is made.
+    if r["shadow"]:
+        print(f"wrote {shadow_plot(clip, r, ball_rows)}")
+    else:
+        print("  no C3 plot: this clip has no labelled ground shadow to compare against")
 
 
 if __name__ == "__main__":

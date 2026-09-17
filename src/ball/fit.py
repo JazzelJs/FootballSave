@@ -38,7 +38,9 @@ V_MAX = 45.0                    # m/s = 162 km/h, above any recorded shot: the f
 P0_SIGMA = 1.5                  # m: how far the kick point is allowed to move from Stage 1's H
 P0_BOUND = 4.0                  # m: and the hard limit, so it can never wander off the pitch
 Z_TOL = 0.05                    # m: how hard the ball is pushed back above the grass (see residuals)
-KICK = {"SNGS-043": 602}        # the frame the shot leaves the boot, found against the video
+KICK = {"SNGS-043": 602, "clip04": 196}  # the frame the shot leaves the boot, found against the video
+# What the video shows happened, so C2 can say whether the fit AGREES rather than just "wrong".
+SCORED = {"SNGS-043": True, "clip04": False}  # clip04 is the near miss this project started from
 
 
 # ---------------------------------------------------------------- inputs
@@ -317,10 +319,17 @@ def report(r, rows, homographies, kick):
         # A ball crossing the line ALONG THE GROUND is a goal, so there is no lower bound here.
         # "z >= 0" is physics (the residual enforces it), not part of what counts as a goal.
         inside = abs(goal["x"]) < GOAL_HALF_WIDTH and goal["z"] < GOAL_HEIGHT
+        scored = SCORED.get(r["clip"])
+        verdict = "INSIDE the posts" if inside else "OUTSIDE the posts"
+        if scored is None:
+            agreement = ""
+        elif inside == scored:
+            agreement = " ✅ agrees with the video (" + ("a goal" if scored else "a near miss") + ")"
+        else:
+            agreement = " ❌ DISAGREES with the video (" + ("a goal" if scored else "a near miss") + ")"
         print(f"C2  at the goal line ({goal['t'] * 1000:.0f} ms after the kick): "
-              f"x {goal['x']:+.2f} m, z {goal['z']:.2f} m  ->  "
-              f"{'INSIDE the goal ✅' if inside else 'NOT in the goal ❌'} "
-              f"(posts ±{GOAL_HALF_WIDTH} m, bar {GOAL_HEIGHT} m)")
+              f"x {goal['x']:+.2f} m, z {goal['z']:.2f} m  ->  {verdict}"
+              f" (posts ±{GOAL_HALF_WIDTH} m, bar {GOAL_HEIGHT} m){agreement}")
     if r["shadow"]:
         peak = max(r["shadow"], key=lambda s: s["z"])
         print(f"C3  shadow gap grows with height: {r['shadow'][0]['gap_m']:.2f} m at the kick, "
@@ -365,7 +374,8 @@ def demo():
     # 0.15 m is about one ball, so a real dive through the pitch would still be caught.
     assert min(s["z"] for s in result["shadow"]) > -0.15, "the fitted ball went underground"
     goal = result["at_goal_line"]
-    assert abs(goal["x"]) < GOAL_HALF_WIDTH and goal["z"] < GOAL_HEIGHT, f"the shot went in: {goal}"
+    inside = abs(goal["x"]) < GOAL_HALF_WIDTH and goal["z"] < GOAL_HEIGHT
+    assert inside == SCORED["SNGS-043"], f"the video says this went in: {goal}"
     print(f"fit self-check ok: {result['px_median']:.2f} px, {result['speed_kmh']:.0f} km/h, "
           f"crosses the line at x {goal['x']:+.2f} z {goal['z']:.2f}")
 

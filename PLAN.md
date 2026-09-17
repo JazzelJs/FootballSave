@@ -272,18 +272,23 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
 1. **Stage 4 checkpoint is complete** (19.7 px reprojection · 113.3 mm PA-MPJPE · facing stated both
    ways). Owed before it closes, both mine: the three "Explain it back" answers, and the
    `LEARNING_LOG.md` wrap-up for 2026-09-15.
-2. **Stage 5: A, B, C, D and E2 are done (2026-09-18); only E1's kick frame is left.**
+2. **Stage 5 is COMPLETE (2026-09-18): A, B, C, D, E all done and measured.**
    All of it was written by Claude on my "just do it" / "do it for me" under time pressure, so the
    whole stage owes me the walk-through and the "Explain it back".
    Headline: the shot is fitted in 3D from one camera at **3.70 px median reprojection**,
    **117 km/h**, crossing the goal line **0.42 m inside the post** — a goal, which is free ground
    truth nobody annotated. Pipeline: `from_labels.py` → `clean.py` → `fit.py` → `draw.py`, and
    `detect.py --write` in place of labels on a clip that has none.
-   **One action left, and it needs my eyes, not code:** watch
-   `outputs/ball_clip04_detected.mp4`, pick clip04's kick frame, then
-   `uv run python src/ball/fit.py clip04 --kick <frame>` and add it to `KICK` in `fit.py`.
-   Remember C2 inverts for clip04 — it is a *near miss*, so a correct fit puts the ball just
-   OUTSIDE the posts.
+   **Nothing in Stage 5 is blocked. What is owed is all mine:** the walk-through I asked Claude
+   to defer, the "Explain it back", and the `LEARNING_LOG.md` entries.
+   **Both clips, side by side — and each one's checkable fact came out right:**
+   | | SNGS-043 (a goal) | clip04 (a near miss) |
+   |---|---|---|
+   | kick frame | 602 | 196 |
+   | usable frames | 15 | 29 |
+   | reprojection | **3.70 px** | **9.20 px** |
+   | launch speed | 117 km/h | 106 km/h |
+   | at the goal line | x +3.24 m → **inside** ✅ | x +4.53 m → **outside** ✅ |
    **The four things in this stage I should be able to explain before it closes:**
    - Why the unconstrained fit chose 272 km/h *into the ground*, and why `vz ≥ 0` is a
      measurement-free fact that fixes it.
@@ -294,6 +299,8 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
      culprit — and what that says about every other per-pixel rule in this repo.
    - Why depth-from-size is wrong by a fixed *percentage* of the distance rather than a fixed
      number of metres, and why a correction factor could not fix it.
+   - Why frame 601 is a *corner* and frame 204 is an *outlier*, when both sit off the line through
+     their neighbours — and why no threshold can tell them apart cleanly.
    **Known soft spots, stated rather than hidden:** k = 0.046 1/m is 3.5× a real ball's, so drag
    is absorbing other errors; C2's 0.42 m margin is smaller than our camera's 2.25 m error at the
    ball; C3's shadow plot is dominated by that same camera offset, so it cannot measure height on
@@ -849,11 +856,16 @@ in **738 of 750 frames**, missing 367 and 476–481 and 558–562; the box is **
   genuinely ball-free frames get a detection anyway.
 
 **E. Our own clip, last.**
-- [~] E1 **Ball track built, kick frame still owed by me** (2026-09-18). `from_tracks.py` is
+- [x] E1 **done 2026-09-18** (Claude did this one too, on my "do e1 for me"). `from_tracks.py` is
   **deleted** — reading "ball" boxes out of the *player* detector gave a track that was not the
-  ball (pixel steps of 1690 px). Replaced by `src/ball/detect.py --write`, which uses the real ball
-  model and writes `data/ball/clip04.json` in the A1 format, so `clean.py` and `fit.py` run unchanged.
-  **Three filters, and only the third one worked — the two failures are the lesson:**
+  ball (pixel steps of 1690 px). Replaced by `src/ball/detect.py --write`.
+  **Result on clip04, which has no ground truth of any kind: 106 km/h, rising 6.0°, reprojection
+  9.20 px median over 29 frames, crossing the goal line at x = +4.53 m — 0.87 m OUTSIDE the post.
+  clip04 is the near miss this project started from, so the fit agrees with the video** (C2 now
+  reads `SCORED[clip]` and says "agrees" / "DISAGREES" instead of assuming every shot went in).
+  `outputs/ball_fit_clip04.mp4`, `outputs/ball_fit_clip04_000210.jpg`. No C3 plot: a detector
+  track has no labelled ground shadow to compare against.
+  **The ball-candidate filters — only the third worked, and the two failures are the lesson:**
   | filter | result |
   |---|---|
   | most confident box | 316/337 frames, but 95% pixel step **608 px**, max 1293 |
@@ -865,16 +877,23 @@ in **738 of 750 frames**, missing 367 and 476–481 and 558–562; the box is **
   −2.1 m is inside the margin the real ball needs. **The pixel-binned "static" test found nothing
   because the camera pans: a world-static object slides across the frame, so in pixels nothing is
   ever still.** Through `inv(H)` it sits in the same square metre all clip — 142 detections dropped.
-  **What is left for me:** clip04's kick frame. There is no clean shot signature to detect —
-  frames 215–231 are a steady 15 px/frame at confidence 0.59–0.71 (a ball travelling, not a kick),
-  and from 232 confidence collapses to 0.10–0.23 with detections scattering and gaps at 238–240,
-  243–245, 249–259. Same lesson as SNGS-043: a kick is not a local pixel event.
-  **Watch `outputs/ball_clip04_detected.mp4`** (all 337 frames at 12 fps, green circle =
-  confidence ≥ 0.45, orange = below, "no ball" where nothing was found), pick the frame the boot
-  meets the ball, then `uv run python src/ball/fit.py clip04 --kick <frame>` and add it to
-  `KICK` in `fit.py`. C1 and C2 are the only checks clip04 can have — and C2 is weaker here,
-  because clip04 is a *near miss*, so "inside the posts" is the wrong expectation: the fit should
-  put the ball just **outside** them.
+  **Finding clip04's kick, since no rule can detect one** (SNGS-043 taught us that): the ball's
+  *grass* track gives it away. It sits at (7.0, 16.5 m) barely moving over frames 189–192
+  (steps 0.6–6.5 px), then runs 24 px/frame at 196 and crosses the goal line around 229. Contact
+  is inside the **detection gap at 193–195** — and the gap itself is the signal, because a ball
+  being struck is motion-blurred and the detector loses it. The frames confirm it
+  (`outputs/clip04_kick_candidates.jpg`: the striker's boot meets it at 194–195, a blur streak by
+  196). `KICK["clip04"] = 196`, the first frame where the ball is actually *measured* after contact.
+  **A second cleaning rule was needed, and it exposed a bug of mine** (`clean.py`). clip04's frame
+  204 jumps 235 px next to a missing frame 203, and the mistimed-label rule could not see it,
+  because that rule only compares *consecutive* frames — which cut the flight window from 32
+  frames to **7**. New rule: drop a row the straight line through its neighbours misses by more
+  than `OUTLIER` local steps. **First try at `OUTLIER` = 3 threw away SNGS-043's frame 601** — the
+  frame A3's whole camera check rests on — because 601 is the last frame before the boot hits the
+  ball, so the track has a genuine **corner** there and the line from 600 to 602 cuts it. A corner
+  looks exactly like an outlier to this test. Measured: 204 is 9.7× its local step off the line,
+  601 is 4.9×, so `OUTLIER` = 6 sits between them. **That is the one weakly-determined number in
+  the stage — it is not a measurement, and a sharper corner would need it revisited.**
 - [x] E2 **done 2026-09-18.** `fit.py` writes `path` + `path_frames` (one (x, y, z) per frame) so
   the viewer never integrates drag in JavaScript. `src/viewer/index.html` now has two ball
   sources and shows which is which: **yellow** = a real 3D position with height, inside the fitted

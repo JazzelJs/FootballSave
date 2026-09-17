@@ -48,6 +48,7 @@ DIR_AGREE = 0.0    # cos of the angle a gap may bend: 0 = fill only while the ba
 RATIO = 0.35       # a step below this fraction of the recent median step is a mistimed label
 MIN_MOVE = 1.0     # px: below this the ball is standing still and the ratio means nothing
 WINDOW = 5         # how many steps BEFORE a frame set its yardstick (see suspicious())
+OUTLIER = 6.0      # a row this many local steps off the line through its neighbours is junk
 
 
 def fill_gaps(rows, missing):
@@ -150,7 +151,38 @@ def suspicious(rows):
         scale = float(np.median(recent))
         if scale >= MIN_MOVE and step < RATIO * scale:
             row["source"] = "dropped"
+
+    # Second rule: a row that its own neighbours contradict. The rule above only ever compares
+    # CONSECUTIVE frames, so a bad detection sitting next to a gap is invisible to it -- clip04's
+    # frame 204 jumps 235 px with frame 203 missing, and it survived, which cut the flight window
+    # from 35 frames to 7 usable frames. So also ask: does the straight line between the rows
+    # either side of this one pass through it?
+    #
+    # OUTLIER is 6, and it is the one genuinely weakly-determined number in this file, because a
+    # CORNER in the track looks like an outlier to this test. Two measured cases set it:
+    #   clip04 frame 204   213 px off the line, local step 22 px  -> 9.7x, junk, must drop
+    #   SNGS-043 frame 601  23 px off the line, local step 4.7 px -> 4.9x, REAL, must keep
+    # 601 is the last frame before the boot hits the ball, so the track has a genuine corner
+    # there and the line from 600 to 602 cuts it. (A first version used 3.0 and threw 601 away --
+    # the frame that A3's whole camera check depends on.) 6 sits between the two; it is not a
+    # measurement, and a clip with a sharper corner would need it looked at again.
+    kept = [r for r in rows if r["source"] == "label"]
+    for previous, row, following in zip(kept, kept[1:], kept[2:]):
+        span = following["frame"] - previous["frame"]
+        scale = _scale(steps, row["frame"])
+        if span < 2 or scale is None or scale < MIN_MOVE:
+            continue
+        t = (row["frame"] - previous["frame"]) / span
+        expected = [_lerp(previous["px"][i], following["px"][i], t) for i in (0, 1)]
+        if np.linalg.norm(np.array(row["px"], dtype=float) - expected) > OUTLIER * scale:
+            row["source"] = "dropped"
     return rows
+
+
+def _scale(steps, frame):
+    """The ball's recent px-per-frame, from the WINDOW steps before this frame. None if unknown."""
+    recent = [steps[f] for f in range(frame - WINDOW, frame) if f in steps]
+    return float(np.median(recent)) if len(recent) >= 3 else None
 
 
 def main(clip):
@@ -161,8 +193,12 @@ def main(clip):
     out.write_text(json.dumps({**data, "frames": rows}))
     counts = {k: sum(r["source"] == k for r in rows) for k in ("label", "filled", "dropped")}
     print(f"wrote {out}: {counts}")
-    usable = [r for r in rows if r["source"] == "label" and FLIGHT[0] <= r["frame"] <= FLIGHT[1]]
-    print(f"  frames the B fit can use ({FLIGHT[0]}-{FLIGHT[1]}): {len(usable)} of {FLIGHT[1] - FLIGHT[0] + 1}")
+    # FLIGHT is SNGS-043's window, so only report against it on that clip -- printing
+    # "0 of 21 usable" for clip04 says nothing except that clip04's shot is elsewhere.
+    if clip == "SNGS-043":
+        usable = [r for r in rows if r["source"] == "label" and FLIGHT[0] <= r["frame"] <= FLIGHT[1]]
+        print(f"  frames the B fit can use ({FLIGHT[0]}-{FLIGHT[1]}): {len(usable)} "
+              f"of {FLIGHT[1] - FLIGHT[0] + 1}")
 
 
 def demo():
