@@ -197,6 +197,9 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   direction by **45.1° median**, **64.9° mean**, and **164.5° at the 95th percentile**. This is not
   a valid facing ground truth for this kick because the shooter is mostly planted; use image keypoints
   or KTH 3D ground truth before changing the orientation again.
+- **KTH readiness:** `data/kth/sequence2/` is already present (175 frames, 3 cameras, 14 joints).
+  Its supplied cameras reproject the supplied 3D joints to the supplied 2D labels at **5.7 px median**
+  (**17.8 px at the 95th percentile**); use Camera 1 as the first HMR2 benchmark input.
 - **Decision:** use SMPL directly for now. Do not spend the next step retargeting the Quaternius or
   Sketchfab character; a display character would add work without improving the pose estimate.
 
