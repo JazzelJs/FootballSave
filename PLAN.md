@@ -220,6 +220,12 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   23.2 px mean / 46.0 px at the 95th percentile**. `outputs/smpl_reprojection_SNGS-043_1131_000602.jpg`
   visibly puts green SMPL joints close to red 2D detector joints at the kick. This is model-vs-model
   agreement, not labeled ground truth; occluded limbs and the 2D detector itself set its floor.
+- **Multi-player pose, ready to run:** `notebooks/kaggle/football3d_sngs043_approach_poses.ipynb`
+  selects the five-second window from **15 to 10 seconds before SNGS-043's goal** (frames 244–369;
+  the goal is frame 619). It runs only the three stable non-referee raw tracks nearest the labeled
+  ball: **170 (A), 17 (B), 159 (A)** — 123, 122, and 122 crops respectively. Attach the existing
+  SoccerNet/raw-track Kaggle dataset, private SMPL input, and private `hmr2_cache`; enable a T4 GPU.
+  Download the three resulting `pose_<id>.npz` files and put them in `data/` before making viewer meshes.
 - **Decision:** use SMPL directly for now. Do not spend the next step retargeting the Quaternius or
   Sketchfab character; a display character would add work without improving the pose estimate.
 
