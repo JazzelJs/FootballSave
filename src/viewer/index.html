@@ -384,7 +384,10 @@ function checkInterp() {
 Promise.all([
   fetch(`${dataRoot}/tracks/${clip}.json`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
   fetch(`${dataRoot}/camera/${clip}.json`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-  ...POSES.map(pose => fetch(`${dataRoot}/${pose.file}`).then(r => r.ok ? r.arrayBuffer() : null))
+  // no-cache, because a re-exported mesh keeps its name and size: the browser will happily serve
+  // the previous one, and an old camera-space mesh renders upside down under the current code.
+  ...POSES.map(pose => fetch(`${dataRoot}/${pose.file}`, { cache: 'no-cache' })
+    .then(r => r.ok ? r.arrayBuffer() : null))
 ])
   .then(([d, camera, ...meshes]) => {
     data = d;
