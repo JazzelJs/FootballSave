@@ -269,17 +269,24 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   Sketchfab character; a display character would add work without improving the pose estimate.
 
 **Start the next session with:**
-1. **Next Stage 4 task:** track 171's facing is 30° median against 68 running samples, and its worst
-   frames (568–572) are the hand-over inside the joined track. Check whether the join is putting two
-   different players under one id there — that is the Stage 2 team-colour idea (item 4) coming back.
-2. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
+1. **Stage 4 checkpoint is complete** (19.7 px reprojection · 113.3 mm PA-MPJPE · facing stated both
+   ways). Owed before it closes, both mine: the three "Explain it back" answers, and the
+   `LEARNING_LOG.md` wrap-up for 2026-09-15.
+2. **Stage 5 started 2026-09-18.** Work the "Execution order" checklist in the Stage 5 section from
+   the top; A, B and C need no downloads. Optional question I skipped, worth answering sometime:
+   before the kick the same labels give sensible pitch coordinates — why doesn't the ray problem
+   bite there?
+3. **Parked, not blocking:** track 171's facing is 30° median over 68 running samples and its worst
+   frames (568–572) are the hand-over inside the joined track. That is a tracking problem, and it is
+   the Stage 2 team-colour idea coming back.
+4. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
    *where* vs *who*, foot point → meters, wobble, goal side. 2026-09-16 has its `LEARNING_LOG.md`
    entry; parts of it are Claude's wording and I should rewrite those in my own words.
-3. Open questions I haven't answered yet (no rush, they're small):
+5. Open questions I haven't answered yet (no rush, they're small):
    - (B)'s biggest error is exactly 3.00 m while (A)'s is 12.9 m. Why, and what does that do to
      comparing (B) with (A)?
    - If PnLCalib gave a perfect camera tomorrow, which file changes: `data/track/…` or `data/tracks/…`?
-4. Left in Stage 2 on purpose, to pick up when it matters: use the team colours to refuse a join or a
+6. Left in Stage 2 on purpose, to pick up when it matters: use the team colours to refuse a join or a
    tracker hand-over between two different kits (69% of ID switches are swaps, which joining can't fix).
 
 **Pipeline for a clip, as it runs today** (all from the repo root, all local on the Mac):
@@ -636,6 +643,50 @@ with 4 px reprojection error still be badly wrong in 3D?
   believable. You can explain what would make the fit wrong.
 - Detection rate of the ball model on your clips (a number).
 - Size-based baseline error on `SNv3D.csv` (a number, vs the paper's 4.2 m).
+
+**Execution order (written 2026-09-18, so a new session can just pick the next unticked box).**
+Nothing in A–C needs a download. Measured facts to start from: the SNGS-043 labels carry the ball
+in **738 of 750 frames**, missing 367 and 476–481 and 558–562; the box is **3–25 px wide, median
+12**; the kick is **frame 602**; the focal length is 3557 px at 602 and 4164 px at 620.
+
+**A. The 2D ball track, from the labels (no download).**
+- [ ] A1 [CLAUDE] `src/ball/from_labels.py SNGS-043` → `data/ball/SNGS-043.json`: one row per frame
+  with the pixel centre, the box size, and the label's own `bbox_pitch`. Plain I/O.
+- [ ] A2 [YOU] Clean it: fill the three gaps, and decide what counts as a false detection. The 3 px
+  boxes are the suspicious ones — look at them before you trust them.
+- [ ] A3 [YOU] The kick point. Frame 602, ball on the grass, through Stage 1's H → pitch (x, y).
+  **Check it against the labels at frame 601, where the ball IS still on the ground** — you should
+  land within a few tens of cm. If you don't, the fit downstream cannot be right either.
+
+**B. The physics fit (no download).**
+- [ ] B1 [YOU] The model: `p(t) = p0 + v0·t + ½·g·t²`, with p0 = A3's kick point at z = 0 and
+  v0 the three unknowns. Write it and convince yourself of the shape before fitting anything.
+- [ ] B2 [TOGETHER] The residual: project `p(t)` through PnLCalib's **full** camera (`camera_matrix`
+  in `src/calib/compare_pnl.py`, already used by `draw_facing.py`) and subtract the observed pixel.
+  `scipy.optimize.least_squares` over ~40 frames × 2 = 80 numbers vs 3 unknowns. Claude writes the
+  optimiser plumbing; **the residual function is yours** — it is the whole idea of the stage.
+- [ ] B3 [YOU] Drag: add it, measure whether the pixel error actually drops, keep it only if it does.
+
+**C. Checks that need no ground truth (no download).**
+- [ ] C1 [YOU] Speed in km/h at the kick. A hard shot is 90–120 km/h; 400 km/h means a sign is wrong.
+- [ ] C2 [YOU] **The goal is free ground truth.** This clip's shot goes in, so at the goal line
+  (our y = 0, SoccerNet X = 52.5) the fit must give **|x| < 3.66 m and z < 2.44 m** — inside the
+  posts and under the bar. A fit that puts the ball over the bar is wrong, and you know it without
+  any label.
+- [ ] C3 [YOU] The label's own `bbox_pitch` is the ball's **ground shadow**. Before frame 602 it must
+  agree with your fit's shadow; after it, the gap between them grows with height. Plot both.
+- [ ] C4 [CLAUDE] Draw the fitted trajectory back onto the video, the same way `draw_facing.py` does.
+
+**D. The numbers the checkpoint asks for (these need the two downloads in Resources).**
+- [ ] D1 [YOU] `SNv3D.csv` (3.6 MB) → the size-based baseline, `distance ≈ f · 0.22 / d_px`, vs their
+  `ball_3D`. The paper says 4.2 m mean. On our clip 1 px of box error costs **1.3 m at frame 602 and
+  6.9 m at frame 620** — that is the error you are trying to beat, and why.
+- [ ] D2 [CLAUDE] `yolo-sn-ball-opt.pt` (49 MB) → detection rate. Measure it **on SNGS-043**, where
+  the labels say exactly which 738 frames have a ball, before trusting it on clip04.
+
+**E. Our own clip, last.**
+- [ ] E1 Run A–C on clip04, which has no ground truth at all — so C1 and C2 are the only checks left.
+- [ ] E2 Put the flying ball in the viewer, replacing today's label-pixel ball that stops at frame 590.
 
 **Stretch — learn triangulation properly:**
 1. First with KTH Football II: 3 synchronized views + 2D joints + cameras → triangulate
