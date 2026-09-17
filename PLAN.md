@@ -777,30 +777,63 @@ in **738 of 750 frames**, missing 367 and 476–481 and 558–562; the box is **
   on top of each other (10.1 px, z = 0.61 m) and the curve goes into the net past the keeper.
 
 **D. The numbers the checkpoint asks for (these need the two downloads in Resources).**
-**BLOCKED on two downloads I have to fetch by hand** (CLAUDE.md: Claude never downloads).
-Both are SoccerNet-v3D release v1.0.0, <https://github.com/mguti97/SoccerNet-v3D>:
-- [ ] D1 [YOU] `SNv3D.csv` → **3.6 MB → `data/snv3d/SNv3D.csv`**. The size-based baseline,
-  `distance ≈ f · 0.22 / d_px`, vs their `ball_3D`. The paper says 4.2 m mean. On our clip 1 px of
-  box error costs **1.3 m at frame 602 and 6.9 m at frame 620** — that is the error you are trying
-  to beat, and why. *Note for when I do this: our physics fit's 3.70 px reprojection is NOT
-  comparable to 4.2 m; one is an image error and one is a 3D error. The comparable number is the
-  per-frame depth the two methods disagree by.*
-- [ ] D2 [CLAUDE, blocked] `yolo-sn-ball-opt.pt` → **49 MB → `data/models/yolo-sn-ball-opt.pt`**.
-  Detection rate on SNGS-043, where the labels say exactly which 738 frames have a ball. **E1 needs
-  this too** — see below, clip04's ball cannot be tracked without it.
+**Both downloads are in** (Claude fetched them on my "can you do it for me", 2026-09-18):
+`data/models/yolo-sn-ball-opt.pt` (49 MB, GPL-2.0, one class `ball`) and `data/snv3d/SNv3D.csv`
+(3.6 MB, 4051 rows). Beware the release also holds `yolo-sn-ball.pt` (same size, un-tuned) and
+`yolo-issia-ball-opt.pt` (153 MB, other dataset) — we want the `-opt` SN one.
+- [ ] D1 [YOU] **skeleton ready: `src/ball/size_baseline.py`**, three `TODO(human)` functions and a
+  `--self-check`. `distance ≈ f · 0.22 / d_px` vs their `ball_3D`; the paper says 4.2 m mean. On our
+  clip 1 px of box error costs **1.3 m at frame 602 and 6.9 m at frame 620**. Format facts are in
+  the file's docstring — the one that will bite: `calibration` is a **Python** dict (single quotes,
+  so `ast.literal_eval`, not `json.loads`) with exactly PnLCalib's keys, so `camera_matrix()` takes
+  it unchanged; and `ball_bbox` on a *round* ball is 26.76 wide by 16.80 tall, so one of those two
+  is the diameter and one is not. *Also note: our fit's 3.70 px is NOT comparable to 4.2 m — one is
+  an image error, one is a 3D error. The comparable number is the depth the two methods disagree by.*
+- [x] D2 **done 2026-09-18, `src/ball/detect.py`.** Detection rate on SNGS-043, where the labels say
+  exactly which 738 frames hold a ball. `conf` 0.10 deliberately low, a hit is within 25 px.
+  | imgsz | ball found | centre error (median) | false alarms /12 | time |
+  |---|---|---|---|---|
+  | 640 (default) | **3.9%** | 3.6 px | 0 | 22 s |
+  | 1280 | **43.9%** | 3.3 px | 7 | 70 s |
+  | 1920 (native) | **53.1%** | 3.1 px | 9 | 158 s |
+  **The default imgsz is the whole story.** The ball is 3–25 px wide (median 12) in a 1920-wide
+  frame, and YOLO letterboxes to imgsz first, so at 640 a 12 px ball arrives as **4 px** — smaller
+  than one stride-8 output cell, and the rate collapses to 3.9%. Native resolution costs 7× the
+  time and buys 14× the recall.
+  **The whole-clip 53% understates it for our purpose: during the flight (602–622) it finds the
+  ball in 17 of 21 frames = 81%**, at ~3 px. A ball in the air against grass is easy; a ball at
+  someone's feet is not. The paper's warning about poor transfer holds for the clip average, not
+  for the shot itself.
+  Honest caveat: the most confident box is a *different* ball in 30 of 392 hits, and 9 of the 12
+  genuinely ball-free frames get a detection anyway.
 
 **E. Our own clip, last.**
-- [~] E1 **Attempted and blocked, with a measurement** (`src/ball/from_tracks.py`, new). The pipeline
-  itself is clip-agnostic — `from_tracks.py` writes `data/ball/clip04.json` in exactly the shape
-  `from_labels.py` writes, so A2 and B run unchanged. **clip04's ball track is not the ball.**
-  Ball found in 296 of 337 frames, but 199 of those frames offer more than one "ball" box (the
-  spare balls by the ad boards) and the most-confident pick hops between them: pixel steps of
-  **1690 / 1682 / 1207 px, 95% = 1127 px**. Nothing on a pitch moves 1690 px in 20 ms.
-  **Tried and deleted:** pick the candidate *nearest the last accepted one*. It locked onto a
-  stationary spare ball — 11 frames, pixel step median 1 px — because the seed frame's most
-  confident box is already a spare, and continuity then loyally follows it. A continuity rule
-  cannot rescue a detector that cannot tell the match ball from a ball on a rack. **E1 resumes
-  after D2.**
+- [~] E1 **Ball track built, kick frame still owed by me** (2026-09-18). `from_tracks.py` is
+  **deleted** — reading "ball" boxes out of the *player* detector gave a track that was not the
+  ball (pixel steps of 1690 px). Replaced by `src/ball/detect.py --write`, which uses the real ball
+  model and writes `data/ball/clip04.json` in the A1 format, so `clean.py` and `fit.py` run unchanged.
+  **Three filters, and only the third one worked — the two failures are the lesson:**
+  | filter | result |
+  |---|---|
+  | most confident box | 316/337 frames, but 95% pixel step **608 px**, max 1293 |
+  | + drop anything off the pitch (inv(H), 3 m margin) | 315/337, step **unchanged** |
+  | + drop objects that never move, **binned in pixels** | **0 objects found** |
+  | + drop objects that never move, **binned in metres** | 297/337, 95% step **31 px** |
+  The culprit was one ball-shaped object at grass **(20.0, −2.1 m)**, just behind the goal line,
+  which at frame 182 outscored the real ball 0.39 to 0.38. The on-pitch test missed it because
+  −2.1 m is inside the margin the real ball needs. **The pixel-binned "static" test found nothing
+  because the camera pans: a world-static object slides across the frame, so in pixels nothing is
+  ever still.** Through `inv(H)` it sits in the same square metre all clip — 142 detections dropped.
+  **What is left for me:** clip04's kick frame. There is no clean shot signature to detect —
+  frames 215–231 are a steady 15 px/frame at confidence 0.59–0.71 (a ball travelling, not a kick),
+  and from 232 confidence collapses to 0.10–0.23 with detections scattering and gaps at 238–240,
+  243–245, 249–259. Same lesson as SNGS-043: a kick is not a local pixel event.
+  **Watch `outputs/ball_clip04_detected.mp4`** (all 337 frames at 12 fps, green circle =
+  confidence ≥ 0.45, orange = below, "no ball" where nothing was found), pick the frame the boot
+  meets the ball, then `uv run python src/ball/fit.py clip04 --kick <frame>` and add it to
+  `KICK` in `fit.py`. C1 and C2 are the only checks clip04 can have — and C2 is weaker here,
+  because clip04 is a *near miss*, so "inside the posts" is the wrong expectation: the fit should
+  put the ball just **outside** them.
 - [x] E2 **done 2026-09-18.** `fit.py` writes `path` + `path_frames` (one (x, y, z) per frame) so
   the viewer never integrates drag in JavaScript. `src/viewer/index.html` now has two ball
   sources and shows which is which: **yellow** = a real 3D position with height, inside the fitted
