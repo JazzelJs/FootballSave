@@ -157,10 +157,8 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   A rule that never fires on the clips with ground truth cannot be validated — not added.
 
 **Stage 4 baseline completed 2026-09-17:**
-- **Track 166 is a defender, not the shooter** (455 frames, 155–614; true track_id 22, team
-  `right` = the goalkeeper's team). It was picked as the player nearest the ball at the kick, but it
-  was closing down. **The shooter is not identified yet:** up to frame 596 the ball is nearest
-  `left`-team true id 18 (#33) — confirm on frames 590–602 before running pose on them.
+- **Track 166 is a defender, not the shooter.** The shooter is joined detector track **1131**
+  (raw fragments 944 then 1131), confirmed against the video around frames 590–602.
 - **The kick is frame 602.** Found from the ball's *pixel* speed (2.2 → 48.3 px/frame), not meters:
   the labels' ball `bbox_pitch` is the ground projection of a flying ball, so in meters the "speed"
   ramps smoothly 0 → 23 m/s over 35 frames and hides the kick completely. Keep for Stage 5.
@@ -186,15 +184,23 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   Y axis needed flipping; the body is manually rotated 180° so this defender faces left. That
   facing correction is a display setting, not yet a learned orientation estimate. The viewer's
   Three.js imports now point to `Football3D/vendor/`.
+- **Shooter result:** HMR2 processed track 1131 over frames 560–620 (frame 599 interpolated).
+  The corrected SMPL export mirrors the wrongly assigned kicking leg, preserves the body turn visible
+  in HMR2's preview, smooths yaw over 5 frames, and aligns frame 602 toward goal. Raw yaw changed by
+  **6.4° median / 149.1° max per frame**; smoothing reduces that to **4.0° / 21.2°**.
+- **Ground-anchor reprojection check:** track 1131's calibrated pitch point lands **11.6 px median**
+  from the detector box's foot point over 42 visible frames (**5.5 px at frame 602**). This validates
+  camera + pitch anchoring, not the still-open SMPL-joint reprojection checkpoint.
+- **Ball:** calibrated pixel labels are shown in 3D while present. They stop at frame 590; no invented
+  post-label flight is shown.
 - **Decision:** use SMPL directly for now. Do not spend the next step retargeting the Quaternius or
   Sketchfab character; a display character would add work without improving the pose estimate.
 
 **Start the next session with:**
-1. Run HMR2 on the likely shooter (true track `18`, around frames 560–620) instead of defender
-   track `166`, then compare the pose with the ball at kick frame 602.
-2. Keep the SMPL mesh and tracked pitch position together; replace the manual 180° facing correction
-   with a documented/configurable orientation once HMR2's global orientation is checked.
-3. Add the ball to the 3D viewer and connect the kick frame to the shooter's pose.
+1. Add 2D keypoints for track 1131 and measure actual SMPL-joint reprojection error; the current
+   11.6 px number checks only the ground anchor.
+2. Run the same pose model on one KTH Football II camera and compute PA-MPJPE plus facing error.
+3. Only after those checks, decide whether the display needs another orientation adjustment.
 4. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
    *where* vs *who*, foot point → meters, wobble, goal side. 2026-09-16 has its `LEARNING_LOG.md`
    entry; parts of it are Claude's wording and I should rewrite those in my own words.

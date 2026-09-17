@@ -81,7 +81,7 @@
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = ();
-			inputPaths = ();
+			inputPaths = ("$(SRCROOT)/Football3D/prepare_resources.sh", "$(SRCROOT)/src/viewer/index.html", "$(SRCROOT)/data/pose_1131.smpl", "$(SRCROOT)/data/camera/SNGS-043.json");
 			name = "Stage viewer resources";
 			outputPaths = ("$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Web/index.html");
 			runOnlyForDeploymentPostprocessing = 0;

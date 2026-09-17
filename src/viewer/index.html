@@ -47,9 +47,18 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 const HALF_W = 34, LENGTH = 105, BOX_W = 40.32, BOX_D = 16.5, GOAL_AREA_W = 18.32,
       GOAL_AREA_D = 5.5, GOAL_W = 7.32, GOAL_H = 2.44, SPOT = 11, ARC_R = 9.15, CIRCLE_R = 9.15;
 
-const clip = new URLSearchParams(location.search).get('clip') || 'SNGS-043';
+const query = new URLSearchParams(location.search);
+const clip = query.get('clip') || 'SNGS-043';
 // The macOS bundle stages data beside this file; the development server keeps the repo layout.
 const dataRoot = location.protocol === 'file:' ? './data' : '../../data';
+const POSE = {
+  trackId: 1131,
+  file: 'pose_1131.smpl',
+  // The exported mesh preserves the turn visible in HMR2's preview, smooths its yaw over 5 frames,
+  // aligns kick frame 602 toward the attacked goal (+z), and mirrors the right-foot kick correctly.
+  // Keep an override for checking other clips without rebuilding the mesh.
+  rotationY: Number(query.get('poseRotation') ?? 0)
+};
 
 const scene = new THREE.Scene();
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -151,7 +160,7 @@ function drawPlayers(players) {
 // HMR2 already produced the posed 6890-vertex body. Draw it directly instead
 // of approximating its motion on a second character skeleton.
 const smplGroup = new THREE.Group();
-smplGroup.rotation.y = Math.PI;
+smplGroup.rotation.y = POSE.rotationY;
 scene.add(smplGroup);
 let smpl = null, smplMesh = null;
 
@@ -177,25 +186,41 @@ function loadSMPL(buffer) {
     byFrame: new Map(Array.from(frames, (frame, index) => [frame, index])) };
 }
 
-function drawSMPL(frame) {
+function poseSample(frame) {
+  const exact = smpl?.byFrame.get(frame);
+  if (exact !== undefined) return { a: exact, b: exact, mix: 0 };
+  // HMR2 has no crop for frame 599. Blend the adjacent meshes instead of flashing back to a capsule.
+  const a = smpl?.byFrame.get(frame - 1), b = smpl?.byFrame.get(frame + 1);
+  return a !== undefined && b !== undefined ? { a, b, mix: 0.5 } : null;
+}
+
+function posePlayer(frame) {
   const trackFrame = data.frames.find(f => f.frame === frame);
-  const player = trackFrame?.players.find(p => p.id === 166);
-  const index = smpl?.byFrame.get(frame);
-  if (index === undefined || !player) { smplGroup.visible = false; return; }
-  const start = index * smpl.vertexCount * 3;
-  const source = smpl.vertices.subarray(start, start + smpl.vertexCount * 3);
+  const exact = trackFrame?.players.find(p => p.id === POSE.trackId);
+  if (exact) return exact;
+  const before = data.frames.find(f => f.frame === frame - 1)?.players.find(p => p.id === POSE.trackId);
+  const after = data.frames.find(f => f.frame === frame + 1)?.players.find(p => p.id === POSE.trackId);
+  return before && after ? { x: (before.x + after.x) / 2, y: (before.y + after.y) / 2 } : null;
+}
+
+function drawSMPL(frame) {
+  const player = posePlayer(frame), sample = poseSample(frame);
+  if (!sample || !player) { smplGroup.visible = false; return false; }
+  const startA = sample.a * smpl.vertexCount * 3, startB = sample.b * smpl.vertexCount * 3;
   const position = smplMesh.geometry.attributes.position;
   let footY = -Infinity;
-  for (let j = 1; j < source.length; j += 3) footY = Math.max(footY, source[j]);
-  for (let j = 0; j < source.length; j += 3) {
-    position.array[j] = source[j];
-    position.array[j + 1] = footY - source[j + 1];
-    position.array[j + 2] = source[j + 2];
+  const value = j => smpl.vertices[startA + j] * (1 - sample.mix) + smpl.vertices[startB + j] * sample.mix;
+  for (let j = 1; j < position.array.length; j += 3) footY = Math.max(footY, value(j));
+  for (let j = 0; j < position.array.length; j += 3) {
+    position.array[j] = value(j);
+    position.array[j + 1] = footY - value(j + 1);
+    position.array[j + 2] = value(j + 2);
   }
   position.needsUpdate = true;
   smplMesh.geometry.computeVertexNormals();
   smplGroup.position.set(player.x, 0, -player.y);
   smplGroup.visible = true;
+  return true;
 }
 
 // ---- players the tracker lost ----------------------------------------------
@@ -205,6 +230,25 @@ function drawSMPL(frame) {
 const ghostMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 });
 const ghostPool = [];
 let gaps = [], showGaps = false;
+
+// SoccerNet supplies ball pixels only while the ball is visible. Invert the per-frame
+// pitch homography so the 3D ball keeps the same depth ordering as the broadcast.
+const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8),
+  new THREE.MeshLambertMaterial({ color: 0xffffff }));
+scene.add(ball);
+let cameraFrames = new Map();
+
+function drawBall(frame) {
+  const record = data.frames.find(f => f.frame === frame);
+  const px = record?.ball_px, H = cameraFrames.get(frame);
+  if (!px || !H) { ball.visible = false; return; }
+  const inv = new THREE.Matrix3().set(
+    H[0][0], H[0][1], H[0][2], H[1][0], H[1][1], H[1][2], H[2][0], H[2][1], H[2][2]).invert();
+  const p = new THREE.Vector3(px[0], px[1], 1).applyMatrix3(inv);
+  p.multiplyScalar(1 / p.z);
+  ball.position.set(p.x, 0.11, -p.y);
+  ball.visible = true;
+}
 
 function findGaps(frames) {
   const lastFrame = new Map();                        // id -> the last frame it is ever seen in
@@ -253,8 +297,9 @@ function show(f) {
   const k = Math.round(i);
   const frame = data.frames[k].frame;
   const players = playersAt(i);
-  drawPlayers(smpl?.byFrame.has(frame) ? players.filter(p => p.id !== 166) : players);
-  drawSMPL(frame);
+  const bodyVisible = drawSMPL(frame);
+  drawPlayers(bodyVisible ? players.filter(p => p.id !== POSE.trackId) : players);
+  drawBall(frame);
   drawGaps(k);
   scrub.value = k;
   clock.textContent = (i / data.fps).toFixed(1) + ' s'
@@ -289,7 +334,7 @@ function restoreOrbit() {
 const poseView = document.getElementById('poseView');
 poseView.onclick = () => {
   const frame = data.frames[Math.round(i)].frame;
-  const player = data.frames.find(f => f.frame === frame)?.players.find(p => p.id === 166);
+  const player = posePlayer(frame);
   if (!player) return;
   active = camera;
   controls.enabled = true;
@@ -335,15 +380,18 @@ function checkInterp() {
 
 Promise.all([
   fetch(`${dataRoot}/tracks/${clip}.json`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-  fetch(`${dataRoot}/pose_166.smpl`).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
+  fetch(`${dataRoot}/${POSE.file}`).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status)),
+  fetch(`${dataRoot}/camera/${clip}.json`).then(r => r.ok ? r.json() : Promise.reject(r.status))
 ])
-  .then(([d, mesh]) => {
+  .then(([d, mesh, camera]) => {
     data = d;
+    cameraFrames = new Map(camera.frames.map(f => [f.frame, f.H]));
     loadSMPL(mesh);
     gaps = findGaps(d.frames);
     scrub.max = d.frames.length - 1;
-    msg.textContent = `${d.clip} — ${d.frames.length} frames — SMPL body loaded for track 166`;
-    const firstPoseIndex = d.frames.findIndex(f => smpl.byFrame.has(f.frame));
+    msg.textContent = `${d.clip} — ${d.frames.length} frames — corrected pose for track ${POSE.trackId} — calibrated ball when visible`;
+    console.assert(poseSample(599)?.mix === 0.5 && posePlayer(599), 'frame 599 must interpolate pose and position');
+    const firstPoseIndex = d.frames.findIndex(f => poseSample(f.frame));
     show(firstPoseIndex >= 0 ? firstPoseIndex : 0);
     if (firstPoseIndex >= 0) poseView.onclick();
     checkInterp();
