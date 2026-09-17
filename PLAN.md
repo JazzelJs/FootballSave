@@ -227,14 +227,20 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   identifier: it correctly combines raw tracker fragments **663** and **1029**, rather than using
   raw track 171. The tracker has short gaps and ID swaps; the viewer uses a capsule in a gap rather
   than falsely joining a different player. The previous 244–369-frame attempt remains as
-  `pose_17_approach_244_369.npz` for reference. A future Kaggle rerun needs the existing
-  SoccerNet/raw-track dataset, private SMPL input, and private `hmr2_cache`; enable a T4 GPU.
+  `pose_17_approach_244_369.npz` for reference. **Absolute facing direction is not yet validated:**
+  the new meshes currently use HMR2's camera-space global orientation directly (`rotationY: 0`),
+  with no camera-to-pitch yaw transform or per-player reference alignment. Their locations and body
+  articulation are available in the viewer, but do not claim that they face the goal/ball correctly.
+  A future Kaggle rerun needs the existing SoccerNet/raw-track dataset, private SMPL input, and
+  private `hmr2_cache`; enable a T4 GPU.
 - **Decision:** use SMPL directly for now. Do not spend the next step retargeting the Quaternius or
   Sketchfab character; a display character would add work without improving the pose estimate.
 
 **Start the next session with:**
-1. Decide whether the display needs another orientation adjustment. The KTH facing result and broadcast
-   reprojection result now give the evidence needed for that decision.
+1. **Next Stage 4 task:** align each goal-window player's yaw from camera coordinates to pitch
+   coordinates, use a smoothed per-player reference direction, then visually compare frames around
+   591–625 with the broadcast. This is required before claiming the three displayed bodies face the
+   right direction; the KTH facing and broadcast reprojection checks alone do not establish it.
 2. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
    *where* vs *who*, foot point → meters, wobble, goal side. 2026-09-16 has its `LEARNING_LOG.md`
    entry; parts of it are Claude's wording and I should rewrite those in my own words.
