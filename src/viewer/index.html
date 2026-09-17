@@ -233,14 +233,28 @@ const ghostMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: t
 const ghostPool = [];
 let gaps = [], showGaps = false;
 
-// SoccerNet supplies ball pixels only while the ball is visible. Invert the per-frame
-// pitch homography so the 3D ball keeps the same depth ordering as the broadcast.
+// Two ball sources, and they are not the same kind of thing. Inside the fitted flight window
+// we have a real 3D position with a HEIGHT, from src/ball/fit.py. Outside it all we have is a
+// pixel, and a pixel alone cannot give depth -- so there we fall back to putting the ball on the
+// grass with the inverse homography, which is only true while the ball really is on the grass.
 const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8),
   new THREE.MeshLambertMaterial({ color: 0xffffff }));
 scene.add(ball);
 let cameraFrames = new Map();
+let ballFlight = new Map();   // frame -> [x, y, z] in pitch meters, only inside the fitted window
 
 function drawBall(frame) {
+  const flight = ballFlight.get(frame);
+  if (flight) {
+    // three.js is y-up, so the project convention is three = (x, z, -y).
+    // Clamped to the ball's own radius: the fit measures the centre from z = 0 on the grass, so
+    // a few cm of negative z is noise, not a ball underground.
+    ball.position.set(flight[0], Math.max(flight[2], 0.11), -flight[1]);
+    ball.material.color.setHex(0xffdd33);   // yellow while this is a fitted 3D flight
+    ball.visible = true;
+    return;
+  }
+  ball.material.color.setHex(0xffffff);
   const record = data.frames.find(f => f.frame === frame);
   const px = record?.ball_px, H = cameraFrames.get(frame);
   if (!px || !H) { ball.visible = false; return; }
@@ -386,17 +400,23 @@ Promise.all([
   fetch(`${dataRoot}/camera/${clip}.json`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
   // no-cache, because a re-exported mesh keeps its name and size: the browser will happily serve
   // the previous one, and an old camera-space mesh renders upside down under the current code.
+  // Optional: a clip without a fitted flight still works, it just has no flying ball.
+  fetch(`${dataRoot}/ball/${clip}_fit.json`).then(r => r.ok ? r.json() : null).catch(() => null),
   ...POSES.map(pose => fetch(`${dataRoot}/${pose.file}`, { cache: 'no-cache' })
     .then(r => r.ok ? r.arrayBuffer() : null))
 ])
-  .then(([d, camera, ...meshes]) => {
+  .then(([d, camera, ballFit, ...meshes]) => {
     data = d;
     cameraFrames = new Map(camera.frames.map(f => [f.frame, f.H]));
+    if (ballFit) ballFlight = new Map(ballFit.path_frames.map((f, i) => [f, ballFit.path[i]]));
     meshes.forEach((mesh, index) => { if (mesh) loadSMPL(mesh, POSES[index]); });
     gaps = findGaps(d.frames);
     scrub.max = d.frames.length - 1;
     const loadedPoses = POSES.filter(pose => pose.smpl).length;
-    msg.textContent = `${d.clip} — ${d.frames.length} frames — ${loadedPoses} posed tracks — calibrated ball when visible`;
+    msg.textContent = `${d.clip} — ${d.frames.length} frames — ${loadedPoses} posed tracks — `
+      + (ballFlight.size ? `ball in 3D for frames ${ballFit.window[0]}–${ballFit.window[1]} `
+          + `(${ballFit.speed_kmh.toFixed(0)} km/h, ${ballFit.px_median.toFixed(1)} px)`
+        : 'calibrated ball when visible');
     console.assert(poseSample(POSES[0], 599)?.mix === 0.5 && posePlayer(POSES[0], 599), 'frame 599 must interpolate pose and position');
     const firstPoseIndex = d.frames.findIndex(f => POSES.some(pose => poseSample(pose, f.frame) && posePlayer(pose, f.frame)));
     show(firstPoseIndex >= 0 ? firstPoseIndex : 0);

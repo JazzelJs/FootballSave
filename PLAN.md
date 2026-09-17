@@ -8,7 +8,7 @@ Rule of thumb: if a stage takes more than ~2x the estimate, stop and ask Claude
 
 ---
 
-## Current status (updated 2026-09-18) — read this first in a new chat
+## Current status (updated 2026-09-18, Stage 5 A–C + E2) — read this first in a new chat
 
 **Where we are (facing direction now validated, 2026-09-18):** Stage 0 ✅ · Stage 1 ✅ · Stage 2 ✅ · **Stage 3: all the code is done ✅**
 (viewer, capsules by team, orbit + goalkeeper cameras, gaps toggle, interpolation — see the stage
@@ -272,16 +272,25 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
 1. **Stage 4 checkpoint is complete** (19.7 px reprojection · 113.3 mm PA-MPJPE · facing stated both
    ways). Owed before it closes, both mine: the three "Explain it back" answers, and the
    `LEARNING_LOG.md` wrap-up for 2026-09-15.
-2. **Stage 5 started 2026-09-18, A1 and A2 done.** Work the "Execution order" checklist in the
-   Stage 5 section from the top; A, B and C need no downloads. **Next box is A3** (the kick point:
-   frame 602's ball pixel through Stage 1's H, checked against the labels at 601 where the ball is
-   still on the grass). The fit reads `data/ball/SNGS-043_clean.json` and must take **`source` ==
-   `"label"` rows only** — 18 usable frames in 602–622. The measured facts under A3 (fit window,
-   no filled cameras, which frames are label jitter) are already worked out — read them before
-   touching the data. Optional question I skipped, worth answering sometime: before the kick the
-   same labels give sensible pitch coordinates — why doesn't the ray problem bite there?
-   **Owed to me: the line-by-line walk-through of `src/ball/clean.py`**, which Claude wrote because
-   I said "just do it" under time pressure (CLAUDE.md rule 1).
+2. **Stage 5: A, B, C and E2 are done (2026-09-18), all of it written by Claude on my "just do it"
+   under time pressure — so the whole stage owes me the walk-through and the "Explain it back".**
+   Headline: the shot is fitted in 3D from one camera at **3.70 px median reprojection**,
+   **117 km/h**, and it crosses the goal line **0.42 m inside the post** — a goal, which is free
+   ground truth nobody annotated. Pipeline: `from_labels.py` → `clean.py` → `fit.py` → `draw.py`.
+   **Two boxes are left and both are blocked on downloads I have to fetch by hand** (sizes and
+   target folders are in the D section): `SNv3D.csv` (3.6 MB) for D1, and `yolo-sn-ball-opt.pt`
+   (49 MB) for D2 — and E1 (clip04) needs D2 as well, because clip04's detector cannot tell the
+   match ball from the spare balls by the ad boards (pixel steps up to 1690 px).
+   **The three things in this stage I should be able to explain before it closes:**
+   - Why the unconstrained fit chose 272 km/h *into the ground*, and why `vz ≥ 0` is a
+     measurement-free fact that fixes it.
+   - Why two answers 0.4 px apart can be 70 km/h and 171 km/h, and what that says about how much
+     a single camera can ever know.
+   - Why free flight ends at the goal line (617) and not where the pixel step collapses (622).
+   **Known soft spots, stated rather than hidden:** k = 0.046 1/m is 3.5× a real ball's, so drag
+   is absorbing other errors; C2's 0.42 m margin is smaller than our camera's 2.25 m error at the
+   ball; and C3's shadow plot is dominated by that same camera offset, so it cannot measure height
+   on this clip.
 3. **Parked, not blocking:** track 171's facing is 30° median over 68 running samples and its worst
    frames (568–572) are the hand-over inside the joined track. That is a tracking problem, and it is
    the Stage 2 team-colour idea coming back.
@@ -682,9 +691,20 @@ in **738 of 750 frames**, missing 367 and 476–481 and 558–562; the box is **
   - **A mistake worth keeping:** the first rule dropped only *exact* pixel repeats and the self-check
     still passed — it counted survivors (21 ≥ 15), and a rule that drops nothing also leaves 21
     standing. The check now asserts the dropped set **is exactly** {616, 618, 621}.
-- [ ] A3 [YOU] The kick point. Frame 602, ball on the grass, through Stage 1's H → pitch (x, y).
-  **Check it against the labels at frame 601, where the ball IS still on the ground** — you should
-  land within a few tens of cm. If you don't, the fit downstream cannot be right either.
+- [x] A3 **done 2026-09-18** (`src/ball/fit.py`, `kick_frame` + `kick_point`). Two findings, both bad
+  news that had to be faced:
+  - **The kick frame cannot be detected, it is a per-clip fact.** `KICK = {"SNGS-043": 602}`.
+    The pixel step does shout at the kick (2.2 px → 48.3 px) but the biggest step in the clip is
+    frame **375 at 81.6 px** — a pass — and the ratio against the local median cannot separate them
+    either (602 is 10× its neighbourhood, 375 is 9×). A shot is not "the fastest the ball moves";
+    it is the event that ends in the net, which no local rule can see. Unknown clip → the script
+    prints the ten biggest steps and asks for `--kick`.
+  - **The check FAILED as the plan wrote it.** 602 vs 601 through our H moves **1.67 m**, not "a few
+    tens of cm". But that mixes two causes, so it was measured properly instead: at frame 601 the
+    ball is definitely on the grass, and our H vs the labels' own calibration on that same ball is
+    **2.25 m apart** — against the 0.55 m median we measured on players' feet in Stage 2. The ball
+    sits near the goal at the edge of the frame, where our H is least constrained. **This is the
+    biggest single error in the stage**, and it is why p0 became an unknown (see B2).
 
 **Measured on 2026-09-18, before starting A2 — use these instead of re-deriving them:**
 - **Every frame of the flight has its own PnLCalib camera.** 0 filled frames in 595–640, so the
@@ -699,35 +719,95 @@ in **738 of 750 frames**, missing 367 and 476–481 and 558–562; the box is **
   label jitter, probably a repeated annotation. **A2 should decide what to do with them**; they are
   not the ball standing still at 100 km/h.
 
-**B. The physics fit (no download).**
-- [ ] B1 [YOU] The model: `p(t) = p0 + v0·t + ½·g·t²`, with p0 = A3's kick point at z = 0 and
-  v0 the three unknowns. Write it and convince yourself of the shape before fitting anything.
-- [ ] B2 [TOGETHER] The residual: project `p(t)` through PnLCalib's **full** camera (`camera_matrix`
-  in `src/calib/compare_pnl.py`, already used by `draw_facing.py`) and subtract the observed pixel.
-  `scipy.optimize.least_squares` over ~40 frames × 2 = 80 numbers vs 3 unknowns. Claude writes the
-  optimiser plumbing; **the residual function is yours** — it is the whole idea of the stage.
-- [ ] B3 [YOU] Drag: add it, measure whether the pixel error actually drops, keep it only if it does.
+**B. The physics fit (no download).** All done 2026-09-18 in `src/ball/fit.py`.
+**Result: v0 = (+1.20, −32.36, +3.32) m/s, drag k = 0.0459 1/m, reprojection 3.70 px median /
+4.62 mean / 11.73 max over 15 frames.**
+- [x] B1 `path()`: closed form `p0 + v0·t + ½·g·t²` for k = 0, RK-free small-step integration for
+  k > 0 (drag has no closed form). Self-checked against the schoolbook formula at t = 0 and 0.5 s.
+- [x] B2 `residuals()` + `fit()`. **Three things had to be added before the fit meant anything:**
+  1. **The unconstrained fit cheats.** Left free it returns v0 = (+45, −60, −7) m/s at 9.7 px — a
+     **272 km/h** ball kicked *into the ground*, 8.5 m wide of a goal that was scored. It wins
+     because an underground ball is no longer constrained by gravity at all. Fixed with physics,
+     not tuning: `vz ≥ 0` (a ball on the grass cannot be kicked down through it), `|v| ≤ 45 m/s`,
+     and a penalty on any negative z along the path.
+  2. **p0 is an observation, not a constant.** Our H says y = 14.18 m, the labels say 12.74 m, and
+     our camera is worth ~30 px at the ball's 65 m — wider than the whole residual. Nailed to
+     either number the velocity just absorbs the difference. So p0 drifts on a 1.5 m leash
+     (`P0_SIGMA`), z0 stays exactly 0. Final drift: 0.1 m.
+  3. **The window from A2 was too long.** The pixel rule said 602–622, but the first fit crosses
+     the goal line at frame **617.4** — so 619–622 are the ball already IN the net, decelerating
+     against it, and fitting them as free flight bent the parabola 0.31 m under the pitch. One
+     refit on 602–617: **10.98 px → 3.70 px**. Free flight ends at the goal line, not where the
+     pixel step collapses.
+  Multi-start (15 guesses) because the residual is not convex: near/slow and far/fast look alike
+  down one camera ray. **The ray problem, measured: two solutions 0.4 px apart — 70 km/h into the
+  goal and 171 km/h 8.5 m wide of it.** Pixels cannot separate them. Gravity cannot either,
+  because a nearly flat shot has almost no parabola. Only "the ball is not underground" can.
+- [x] B3 **Drag kept, and it is not marginal.** Same window, same everything else:
+  | | no drag | with drag |
+  |---|---|---|
+  | reprojection median / max | 6.31 / 24.08 px | **3.70 / 11.73 px** |
+  | launch speed | 109 km/h | 117 km/h |
+  | at the goal line | x +6.04 m → **misses ❌** | x +3.24 m → **in ✅** |
+  Without drag the model overshoots in the image and the error grows monotonically to the end of
+  the flight. **Caveat:** k = 0.046 1/m is 3.5× a real football's ~0.013 and sits near its bound,
+  so it is absorbing something else too (camera error, spin, the flat-shot ambiguity). Honest
+  reading: drag-shaped deceleration is real and needed; the *value* of k is not a measurement.
 
-**C. Checks that need no ground truth (no download).**
-- [ ] C1 [YOU] Speed in km/h at the kick. A hard shot is 90–120 km/h; 400 km/h means a sign is wrong.
-- [ ] C2 [YOU] **The goal is free ground truth.** This clip's shot goes in, so at the goal line
-  (our y = 0, SoccerNet X = 52.5) the fit must give **|x| < 3.66 m and z < 2.44 m** — inside the
-  posts and under the bar. A fit that puts the ball over the bar is wrong, and you know it without
-  any label.
-- [ ] C3 [YOU] The label's own `bbox_pitch` is the ball's **ground shadow**. Before frame 602 it must
-  agree with your fit's shadow; after it, the gap between them grows with height. Plot both.
-- [ ] C4 [CLAUDE] Draw the fitted trajectory back onto the video, the same way `draw_facing.py` does.
+**C. Checks that need no ground truth (no download).** All done 2026-09-18.
+- [x] C1 **117 km/h** (32.6 m/s), rising 5.9° off the grass. A hard shot is 90–120 km/h, so this
+  passes — and it is the check that caught the 272 km/h cheat above. It earned its place.
+- [x] C2 **At the goal line: x = +3.24 m, z = −0.07 m → INSIDE the posts (±3.66 m) ✅.** The shot
+  crosses 0.42 m inside the keeper's-right post, along the ground. Two honest caveats: (a) 0.42 m
+  of margin is *less* than our camera's own 2.25 m error at that spot, so this is "consistent with
+  a goal", not proof of one; (b) my first version of this check demanded `z > 0` and reported a
+  real goal as a miss — a ball rolling over the line *is* a goal, so the lower bound belongs in
+  the physics (the residual), not in the definition of scoring.
+- [x] C3 **Plotted, and it does NOT show what the plan predicted** —
+  `outputs/ball_shadow_SNGS-043.png`. The gap between our fitted ground track and the labels'
+  shadow is **1.55 m at the kick**, where the ball is ON the grass and the true gap is zero. It
+  then dips to 0.26 m and grows to 1.0 m. So the plot is dominated by the constant ~2 m camera
+  disagreement from A3, not by height: our fitted height only ever reaches 0.43 m, and a 0.43 m
+  ball cannot make a 1.5 m shadow gap. **C3 cannot measure height on this clip** — the systematic
+  error is bigger than the signal. It would work on a clip where our H and theirs agree better.
+- [x] C4 `src/ball/draw.py` → `outputs/ball_fit_SNGS-043.mp4` (32 frames at 8 fps) and
+  `outputs/ball_fit_SNGS-043_000602.jpg` / `_000612.jpg`. Red = the label's ball, green = the fit
+  through that frame's own camera with its px error, yellow = the whole flight, grey = its ground
+  shadow, so the gap between yellow and grey **is** the height. At frame 612 the two circles sit
+  on top of each other (10.1 px, z = 0.61 m) and the curve goes into the net past the keeper.
 
 **D. The numbers the checkpoint asks for (these need the two downloads in Resources).**
-- [ ] D1 [YOU] `SNv3D.csv` (3.6 MB) → the size-based baseline, `distance ≈ f · 0.22 / d_px`, vs their
-  `ball_3D`. The paper says 4.2 m mean. On our clip 1 px of box error costs **1.3 m at frame 602 and
-  6.9 m at frame 620** — that is the error you are trying to beat, and why.
-- [ ] D2 [CLAUDE] `yolo-sn-ball-opt.pt` (49 MB) → detection rate. Measure it **on SNGS-043**, where
-  the labels say exactly which 738 frames have a ball, before trusting it on clip04.
+**BLOCKED on two downloads I have to fetch by hand** (CLAUDE.md: Claude never downloads).
+Both are SoccerNet-v3D release v1.0.0, <https://github.com/mguti97/SoccerNet-v3D>:
+- [ ] D1 [YOU] `SNv3D.csv` → **3.6 MB → `data/snv3d/SNv3D.csv`**. The size-based baseline,
+  `distance ≈ f · 0.22 / d_px`, vs their `ball_3D`. The paper says 4.2 m mean. On our clip 1 px of
+  box error costs **1.3 m at frame 602 and 6.9 m at frame 620** — that is the error you are trying
+  to beat, and why. *Note for when I do this: our physics fit's 3.70 px reprojection is NOT
+  comparable to 4.2 m; one is an image error and one is a 3D error. The comparable number is the
+  per-frame depth the two methods disagree by.*
+- [ ] D2 [CLAUDE, blocked] `yolo-sn-ball-opt.pt` → **49 MB → `data/models/yolo-sn-ball-opt.pt`**.
+  Detection rate on SNGS-043, where the labels say exactly which 738 frames have a ball. **E1 needs
+  this too** — see below, clip04's ball cannot be tracked without it.
 
 **E. Our own clip, last.**
-- [ ] E1 Run A–C on clip04, which has no ground truth at all — so C1 and C2 are the only checks left.
-- [ ] E2 Put the flying ball in the viewer, replacing today's label-pixel ball that stops at frame 590.
+- [~] E1 **Attempted and blocked, with a measurement** (`src/ball/from_tracks.py`, new). The pipeline
+  itself is clip-agnostic — `from_tracks.py` writes `data/ball/clip04.json` in exactly the shape
+  `from_labels.py` writes, so A2 and B run unchanged. **clip04's ball track is not the ball.**
+  Ball found in 296 of 337 frames, but 199 of those frames offer more than one "ball" box (the
+  spare balls by the ad boards) and the most-confident pick hops between them: pixel steps of
+  **1690 / 1682 / 1207 px, 95% = 1127 px**. Nothing on a pitch moves 1690 px in 20 ms.
+  **Tried and deleted:** pick the candidate *nearest the last accepted one*. It locked onto a
+  stationary spare ball — 11 frames, pixel step median 1 px — because the seed frame's most
+  confident box is already a spare, and continuity then loyally follows it. A continuity rule
+  cannot rescue a detector that cannot tell the match ball from a ball on a rack. **E1 resumes
+  after D2.**
+- [x] E2 **done 2026-09-18.** `fit.py` writes `path` + `path_frames` (one (x, y, z) per frame) so
+  the viewer never integrates drag in JavaScript. `src/viewer/index.html` now has two ball
+  sources and shows which is which: **yellow** = a real 3D position with height, inside the fitted
+  window; **white** = the old pixel-on-the-grass fallback, which is only true while the ball is
+  actually on the grass. Verified in the browser: the header reads "ball in 3D for frames 602–617
+  (117 km/h, 3.7 px)" and the goalkeeper view shows the ball low and to the keeper's right,
+  matching C2's x = +3.24 m.
 
 **Stretch — learn triangulation properly:**
 1. First with KTH Football II: 3 synchronized views + 2D joints + cameras → triangulate
