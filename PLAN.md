@@ -8,7 +8,7 @@ Rule of thumb: if a stage takes more than ~2x the estimate, stop and ask Claude
 
 ---
 
-## Current status (updated 2026-09-17) — read this first in a new chat
+## Current status (updated 2026-09-18) — read this first in a new chat
 
 **Where we are (facing direction now validated, 2026-09-18):** Stage 0 ✅ · Stage 1 ✅ · Stage 2 ✅ · **Stage 3: all the code is done ✅**
 (viewer, capsules by team, orbit + goalkeeper cameras, gaps toggle, interpolation — see the stage
@@ -272,12 +272,16 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
 1. **Stage 4 checkpoint is complete** (19.7 px reprojection · 113.3 mm PA-MPJPE · facing stated both
    ways). Owed before it closes, both mine: the three "Explain it back" answers, and the
    `LEARNING_LOG.md` wrap-up for 2026-09-15.
-2. **Stage 5 started 2026-09-18, A1 done.** Work the "Execution order" checklist in the Stage 5
-   section from the top; A, B and C need no downloads. **Next box is A2**, and the measured facts
-   just under A3 (fit window 602–622, no filled cameras, which frames are label jitter) are already
-   worked out — read them before touching the data. Optional question I skipped, worth answering sometime:
-   before the kick the same labels give sensible pitch coordinates — why doesn't the ray problem
-   bite there?
+2. **Stage 5 started 2026-09-18, A1 and A2 done.** Work the "Execution order" checklist in the
+   Stage 5 section from the top; A, B and C need no downloads. **Next box is A3** (the kick point:
+   frame 602's ball pixel through Stage 1's H, checked against the labels at 601 where the ball is
+   still on the grass). The fit reads `data/ball/SNGS-043_clean.json` and must take **`source` ==
+   `"label"` rows only** — 18 usable frames in 602–622. The measured facts under A3 (fit window,
+   no filled cameras, which frames are label jitter) are already worked out — read them before
+   touching the data. Optional question I skipped, worth answering sometime: before the kick the
+   same labels give sensible pitch coordinates — why doesn't the ray problem bite there?
+   **Owed to me: the line-by-line walk-through of `src/ball/clean.py`**, which Claude wrote because
+   I said "just do it" under time pressure (CLAUDE.md rule 1).
 3. **Parked, not blocking:** track 171's facing is 30° median over 68 running samples and its worst
    frames (568–572) are the hand-over inside the joined track. That is a tracking problem, and it is
    the Stage 2 team-colour idea coming back.
@@ -657,8 +661,27 @@ in **738 of 750 frames**, missing 367 and 476–481 and 558–562; the box is **
   median 12. Each row keeps `px` (a real measurement, the only input to a fit) and `pitch_px` (where
   a ray through that pixel hits the grass — the ball's *shadow* once it is airborne). Self-check:
   `--self-check` asserts the shadow is inside the pitch at 601 and past the goal line at 620.
-- [ ] A2 [YOU] Clean it: fill the three gaps, and decide what counts as a false detection. The 3 px
-  boxes are the suspicious ones — look at them before you trust them.
+- [x] A2 [CLAUDE on my "just do it", walk-through owed to me] **done 2026-09-18**:
+  `uv run python src/ball/clean.py SNGS-043` → `data/ball/SNGS-043_clean.json`, same rows plus
+  `source` = `label` / `filled` / `dropped`. **Only `label` rows may feed the B fit.**
+  Result: 636 label, **1 filled**, 102 dropped; **18 of the 21 flight frames usable**.
+  - **Two of the three gaps are refused, not filled.** One rule: compare the ball's direction just
+    before the gap with the straight line across it. 367 agrees (dot 1.00) → filled. 476–481
+    (dot −0.95) and 558–562 (dot −0.99) *reverse*: over 555–557 the ball goes right and comes back
+    144 px left, so a straight line there is an invention, not a guess. Both are pre-kick, so
+    refusing costs the fit nothing — that is the real finding: **gap filling changes no Stage 5 number.**
+  - **The frames that do matter are 616, 618, 621** (steps 3.0 / 4.2 / 3.6 px where the ball covers
+    15–25). Each is followed by a double step, so the annotation lagged a frame and caught up —
+    mistimed, not stationary. Dropped by a ratio against the median of the **five steps before**
+    the frame (`RATIO` = 0.35, `MIN_MOVE` = 1.0 px, `WINDOW` = 5). Past-only matters: a window that
+    also looks forward borrows the post-622 in-net steps and lets 621 survive. Ratios 0.15 / 0.26 /
+    0.24 vs 0.59–2.91 for every other flight frame. Subsumes the 41 exact pixel repeats.
+  - **The 14 boxes ≤ 4 px wide are NOT dropped**: all at frames 29–134, none inside the flight, so a
+    size rule changes no number here. Telling the match ball from a spare by the ad boards needs
+    somebody to look at 14 crops.
+  - **A mistake worth keeping:** the first rule dropped only *exact* pixel repeats and the self-check
+    still passed — it counted survivors (21 ≥ 15), and a rule that drops nothing also leaves 21
+    standing. The check now asserts the dropped set **is exactly** {616, 618, 621}.
 - [ ] A3 [YOU] The kick point. Frame 602, ball on the grass, through Stage 1's H → pitch (x, y).
   **Check it against the labels at frame 601, where the ball IS still on the ground** — you should
   land within a few tens of cm. If you don't, the fit downstream cannot be right either.
