@@ -59,10 +59,10 @@ const POSES = [{
   // Keep an override for checking other clips without rebuilding the mesh.
   rotationY: Number(query.get('poseRotation') ?? 0)
 },
-  // The three players closest to the ball, 15–10 seconds before the SNGS-043 goal.
-  { trackId: 170, file: 'pose/mesh/pose_170.smpl', rotationY: 0 },
+  // The three stable players nearest the goal during clip time 00:00:15–00:00:25.
+  { trackId: 284, file: 'pose/mesh/pose_284.smpl', rotationY: 0 },
   { trackId: 17, file: 'pose/mesh/pose_17.smpl', rotationY: 0 },
-  { trackId: 159, file: 'pose/mesh/pose_159.smpl', rotationY: 0 }
+  { trackId: 171, file: 'pose/mesh/pose_171.smpl', rotationY: 0 }
 ];
 
 const scene = new THREE.Scene();
@@ -207,6 +207,7 @@ function posePlayer(pose, frame) {
 }
 
 function drawSMPL(pose, frame) {
+  if (!pose.smpl) return false;                       // the next Kaggle batch may not be downloaded yet
   const player = posePlayer(pose, frame), sample = poseSample(pose, frame);
   if (!sample || !player) { pose.group.visible = false; return false; }
   const startA = sample.a * pose.smpl.vertexCount * 3, startB = sample.b * pose.smpl.vertexCount * 3;
@@ -337,7 +338,7 @@ function restoreOrbit() {
 const poseView = document.getElementById('poseView');
 poseView.onclick = () => {
   const frame = data.frames[Math.round(i)].frame;
-  const pose = POSES.find(p => posePlayer(p, frame));
+  const pose = POSES.find(p => p.smpl && posePlayer(p, frame));
   const player = pose && posePlayer(pose, frame);
   if (!player) return;
   active = camera;
@@ -385,15 +386,16 @@ function checkInterp() {
 Promise.all([
   fetch(`${dataRoot}/tracks/${clip}.json`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
   fetch(`${dataRoot}/camera/${clip}.json`).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-  ...POSES.map(pose => fetch(`${dataRoot}/${pose.file}`).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
+  ...POSES.map(pose => fetch(`${dataRoot}/${pose.file}`).then(r => r.ok ? r.arrayBuffer() : null))
 ])
   .then(([d, camera, ...meshes]) => {
     data = d;
     cameraFrames = new Map(camera.frames.map(f => [f.frame, f.H]));
-    meshes.forEach((mesh, index) => loadSMPL(mesh, POSES[index]));
+    meshes.forEach((mesh, index) => { if (mesh) loadSMPL(mesh, POSES[index]); });
     gaps = findGaps(d.frames);
     scrub.max = d.frames.length - 1;
-    msg.textContent = `${d.clip} — ${d.frames.length} frames — ${POSES.length} posed tracks — calibrated ball when visible`;
+    const loadedPoses = POSES.filter(pose => pose.smpl).length;
+    msg.textContent = `${d.clip} — ${d.frames.length} frames — ${loadedPoses} posed tracks — calibrated ball when visible`;
     console.assert(poseSample(POSES[0], 599)?.mix === 0.5 && posePlayer(POSES[0], 599), 'frame 599 must interpolate pose and position');
     const firstPoseIndex = d.frames.findIndex(f => POSES.some(pose => poseSample(pose, f.frame) && posePlayer(pose, f.frame)));
     show(firstPoseIndex >= 0 ? firstPoseIndex : 0);
