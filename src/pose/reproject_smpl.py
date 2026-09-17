@@ -69,7 +69,7 @@ def smpl_to_world(joints, pitch_xy, rotation, goal):
 
 
 def main(clip, track_id, start, end, draw_frame):
-    pose = np.load(ROOT / "data" / f"pose_{track_id}.npz")
+    pose = np.load(ROOT / "data" / "pose" / "npz" / f"pose_{track_id}.npz")
     poses = dict(zip(pose["frame"], pose["joints"]))
     tracks = json.loads((ROOT / "data" / "tracks" / f"{clip}.json").read_text())
     players = {f["frame"]: next((p for p in f["players"] if p["id"] == track_id), None)

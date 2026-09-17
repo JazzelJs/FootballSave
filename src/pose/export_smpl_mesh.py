@@ -64,8 +64,8 @@ def export(source_path: Path, output_path: Path, stabilize_yaw: bool = False,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("source", type=Path, nargs="?", default=Path("data/pose_166.npz"))
-    parser.add_argument("output", type=Path, nargs="?", default=Path("data/pose_166.smpl"))
+    parser.add_argument("source", type=Path, nargs="?", default=Path("data/pose/npz/pose_166.npz"))
+    parser.add_argument("output", type=Path, nargs="?", default=Path("data/pose/mesh/pose_166.smpl"))
     parser.add_argument("--stabilize-yaw", action="store_true",
                         help="preserve pose tilt but make every frame face the viewer's +z goal direction")
     parser.add_argument("--mirror-left-right", action="store_true",

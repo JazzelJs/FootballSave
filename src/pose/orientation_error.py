@@ -17,7 +17,7 @@ def wrap_degrees(angle):
 
 
 def main(clip, track_id, reference_frame, smooth_window):
-    source = np.load(ROOT / "data" / f"pose_{track_id}.npz")
+    source = np.load(ROOT / "data" / "pose" / "npz" / f"pose_{track_id}.npz")
     frames = np.asarray(source["frame"], dtype=int)
     forward = np.asarray(source["global_orient_rotmat"], dtype=float)[:, 0] @ np.array([0, 0, 1.0])
     raw = np.unwrap(np.arctan2(forward[:, 0], forward[:, 2]))

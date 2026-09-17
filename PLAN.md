@@ -177,11 +177,11 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
 - **Also open:** GVHMR or 4DHumans. It changes the input: 4DHumans wants per-frame crops, GVHMR
   wants the video plus a track and also estimates camera motion. GPU work goes to **Kaggle**.
 - **Kaggle result:** official 4DHumans/HMR2 processed **60/60 crops** for defender track 166,
-  frames 560–619. The output has 24 joints and 6,890 vertices per frame in `data/pose_166.npz`.
-  A small standard-library converter writes the 24 joints to `data/pose_166.json` for the browser.
+  frames 560–619. The output has 24 joints and 6,890 vertices per frame in `data/pose/npz/pose_166.npz`.
+  A small standard-library converter writes the 24 joints to `data/pose/json/pose_166.json` for the browser.
 - **Viewer result:** the male SMPL mesh is anchored to track 166's pitch position and animated in
-  the browser. The viewer reads `data/pose_166.smpl`, generated from the newer NPZ with HMR2's
-  rotation matrices and betas. The preview video is `data/pose_166_preview.mp4`. HMR2's exported
+  the browser. The viewer reads `data/pose/mesh/pose_166.smpl`, generated from the newer NPZ with HMR2's
+  rotation matrices and betas. The preview video is `data/pose/preview/pose_166_preview.mp4`. HMR2's exported
   Y axis needed flipping; the body is manually rotated 180° so this defender faces left. That
   facing correction is a display setting, not yet a learned orientation estimate. The viewer's
   Three.js imports now point to `Football3D/vendor/`.
@@ -225,7 +225,7 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   the goal is frame 619). It runs only the three stable non-referee raw tracks nearest the labeled
   ball: **170 (A), 17 (B), 159 (A)** — 123, 122, and 122 crops respectively. Attach the existing
   SoccerNet/raw-track Kaggle dataset, private SMPL input, and private `hmr2_cache`; enable a T4 GPU.
-  Download the three resulting `pose_<id>.npz` files and put them in `data/` before making viewer meshes.
+  Download the three resulting `pose_<id>.npz` files and put them in `data/pose/npz/` before making viewer meshes.
 - **Decision:** use SMPL directly for now. Do not spend the next step retargeting the Quaternius or
   Sketchfab character; a display character would add work without improving the pose estimate.
 
@@ -647,7 +647,7 @@ Raw tracking = `data/track/<clip>_<model name>_<tracker name>.json`, written by
 "conf": 0.91, "xyxy": [x1, y1, x2, y2]}]}]}`. `id` is only stable until an ID switch; a ball track
 can carry a person `cls` for a few frames (`to_pitch.py` treats any ID that was ever "ball" as ball).
 
-`pose_<id>.npz` — per frame: SMPL `global_orient` (3), `body_pose` (69), `betas` (10),
+`data/pose/npz/pose_<id>.npz` — per frame: SMPL `global_orient` (3), `body_pose` (69), `betas` (10),
 `frame` index.
 
 `ball3d.json` — per frame: `x, y, z` in meters + fit residual.

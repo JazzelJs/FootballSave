@@ -44,11 +44,12 @@ def convert(source: Path, destination: Path) -> None:
             for frame, row in zip(frames, per_frame)
         ]
     }
+    destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(pose, separators=(",", ":")) + "\n")
 
 
 if __name__ == "__main__":
-    source = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("data/pose_166.npz")
-    destination = Path(sys.argv[2]) if len(sys.argv) > 2 else source.with_suffix(".json")
+    source = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("data/pose/npz/pose_166.npz")
+    destination = Path(sys.argv[2]) if len(sys.argv) > 2 else source.parents[1] / "json" / f"{source.stem}.json"
     convert(source, destination)
     print(f"wrote {destination}")
