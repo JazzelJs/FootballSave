@@ -220,13 +220,15 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   23.2 px mean / 46.0 px at the 95th percentile**. `outputs/smpl_reprojection_SNGS-043_1131_000602.jpg`
   visibly puts green SMPL joints close to red 2D detector joints at the kick. This is model-vs-model
   agreement, not labeled ground truth; occluded limbs and the 2D detector itself set its floor.
-- **Multi-player pose, ready to rerun:** `notebooks/kaggle/football3d_sngs043_approach_poses.ipynb`
-  now selects **00:00:15–00:00:25** of SNGS-043 (frames 375–625, ending at the goal). It runs the
-  three longest raw tracks that are still near the goal at frame 625: **284, 17, 171** — 250, 248,
-  and 221 of 251 frames respectively. The tracker has short gaps and ID swaps; the viewer uses a
-  capsule in a gap rather than falsely joining a different player. Attach the existing SoccerNet/raw-track
-  Kaggle dataset, private SMPL input, and private `hmr2_cache`; enable a T4 GPU. Download the three
-  resulting `pose_<id>.npz` files and put them in `data/pose/npz/` before making viewer meshes.
+- **Multi-player pose, completed 2026-09-18:** `notebooks/kaggle/football3d_sngs043_approach_poses.ipynb`
+  selects **00:00:15–00:00:25** of SNGS-043 (frames 375–625, ending at the goal). The resulting
+  HMR2 pose files are `data/pose/npz/pose_284.npz` (250 frames), `pose_17.npz` (248), and
+  `pose_171.npz` (221); their viewer meshes live in `data/pose/mesh/`. 171 is the joined player
+  identifier: it correctly combines raw tracker fragments **663** and **1029**, rather than using
+  raw track 171. The tracker has short gaps and ID swaps; the viewer uses a capsule in a gap rather
+  than falsely joining a different player. The previous 244–369-frame attempt remains as
+  `pose_17_approach_244_369.npz` for reference. A future Kaggle rerun needs the existing
+  SoccerNet/raw-track dataset, private SMPL input, and private `hmr2_cache`; enable a T4 GPU.
 - **Decision:** use SMPL directly for now. Do not spend the next step retargeting the Quaternius or
   Sketchfab character; a display character would add work without improving the pose estimate.
 
