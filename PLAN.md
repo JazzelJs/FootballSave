@@ -331,6 +331,24 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
    `pose_<clip>_<track>.npz`; `draw_facing.py`, `orientation_error.py` and `reproject_smpl.py` use
    it, and the 8 active files were renamed. SNGS-043's numbers are unchanged after the rename
    (track 284 still 10.4° / 66.6°), which is how I know nothing else moved.
+   **`--smooth-yaw` swept 1..15 (and out to 41), 2026-09-18 — and the sweep cannot choose it.**
+   | median facing error | w=1 | w=5 | w=9 | w=15 | w=31 | w=41 |
+   |---|---|---|---|---|---|---|
+   | clip04 track 17 | 16.7° | 15.7° | 15.7° | 13.9° | 11.3° | 11.6° |
+   | clip04 track 15 | 21.8° | 22.3° | 21.0° | 20.2° | 19.2° | 18.4° |
+   | SNGS-043 track 284 | 11.2° | 10.4° | 10.3° | 9.0° | 8.6° | 8.2° |
+   It falls **monotonically and never turns around**, so "optimise the window" means "smooth until
+   the signal is gone" — and w=41 is 0.82 s on clip04, 1.64 s on SNGS-043, long enough to erase
+   real turning (a player turns 180° in about half a second). **The proxy prefers smoothing because
+   the proxy is itself smooth:** travel direction comes from tracker positions 4 frames apart, so
+   it rewards anything that makes the pose yaw smoother whether or not the pose got better. A
+   parameter must never be tuned against a metric it can game.
+   What the sweep *does* establish: across w=1..15 the median moves by only **0.8–3.3°** on every
+   track of both clips — inside the proxy's noise. So pick the window on physics and keep it
+   consistent in **time**: raw per-frame yaw change is 1.5–2.2°/frame on clip04 against 3.6–4.2°
+   on SNGS-043, a ratio of ~2 which is exactly 49.95/25 — the same angular noise spread over twice
+   as many frames. SNGS-043's w=5 at 25 fps is 0.20 s, so clip04 is re-exported at **w=9**
+   (0.18 s). The numbers did not move: 12.0 / 21.0 / 15.7 / 6.4° against 11.4 / 22.3 / 15.7 / 6.3°.
    **The step I had left out of my own instructions:** HMR2 saves pose *parameters*, not vertices,
    so `apply_smpl.py --input … --output …_vertices.npz` runs **before** `export_smpl_mesh.py`.
    `export_kaggle_inputs.py` now prints the full seven steps.

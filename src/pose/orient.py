@@ -94,10 +94,24 @@ def scene_yaw(rotations, global_orient):
 
 
 def yaw_smoothing(yaw, window):
-    """Rotations about the scene's up axis that replace each frame's yaw with a moving average.
+    """Odd moving-average window over the pitch-space yaw, returned as rotations.
 
-    Only yaw is touched: the body's lean stays HMR2's. Smoothing belongs here and not in camera
-    space, where a moving average also averages in the camera's own pan.
+    HOW TO PICK `window`, because the obvious method does not work. Sweeping it against the
+    direction-of-travel proxy (`orientation_error.py`) gives a median that falls MONOTONICALLY and
+    never turns around -- on clip04 track 17: 16.7° at w=1, 13.9° at 15, 11.3° at 31, 11.6° at 41
+    (0.82 s). "Optimise the window" therefore means "smooth until the signal is gone", and a
+    0.8 s moving average erases real turning: a player can turn 180° in half a second.
+
+    The proxy prefers smoothing because the proxy is ITSELF smooth -- travel direction comes from
+    tracker positions 4 frames apart. So it rewards any change that makes the pose yaw smoother,
+    whether or not the pose is more correct. Never tune a parameter against a metric it can game.
+
+    What the sweep DOES say: the whole range w=1..15 moves the median by 0.8-3.3° on every track
+    of both clips, which is inside the proxy's own noise. The window barely matters, so pick it
+    on physics and keep it consistent: match it in TIME across clips. Raw per-frame yaw change is
+    1.5-2.2°/frame on clip04 against 3.6-4.2° on SNGS-043 -- a ratio of about 2, exactly the frame
+    rate ratio (49.95 / 25), so it is the same angular noise spread over twice as many frames.
+    SNGS-043 uses w=5 at 25 fps = 0.20 s, so clip04 uses w=9 at 49.95 fps = 0.18 s.
     """
     if window < 1 or window % 2 == 0:
         raise ValueError("smoothing window must be an odd positive number")

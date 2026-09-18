@@ -53,7 +53,7 @@ Our own broadcast clip, with no ground truth of any kind. Everything works, and 
 |---|---|
 | players | 337 frames (6.7 s), 23 tracks, teams assigned |
 | posed bodies | **4** — tracks 10 (the shooter), 15, 17, 9 |
-| facing | **11.4° / 22.3° / 15.7° / 6.3°** median on the four |
+| facing | **12.0° / 21.0° / 15.7° / 6.4°** median on the four (`--smooth-yaw 9`) |
 | ball in 3D | **106 km/h**, 9.20 px reprojection, **0.87 m outside the post** ✅ |
 
 **The point of this one is the near miss.** clip04 is a shot that misses, and the fit — with no
@@ -70,18 +70,24 @@ Same model, same code, better input — and the improvement lands exactly where 
 
 | facing error, median / 95th | SNGS-043 | clip04 |
 |---|---|---|
-| best track | 10.4° / **66.6°** | 6.3° / **23.9°** |
-| the shooter | 1.2° (only 4 running samples — noise) | 11.4° / **23.2°** (61 samples) |
-| worst track | 29.9° / **104.1°** | 22.3° / **51.8°** |
+| best track | 10.4° / **66.6°** | 6.4° / **21.6°** |
+| the shooter | 1.2° (only 4 running samples — noise) | 12.0° / **25.0°** (61 samples) |
+| worst track | 29.9° / **104.1°** | 21.0° / **51.4°** |
 
 The medians are comparable. **The tails are two to four times better**, because clip04's tracks are
 unbroken (313–337 boxes of 337 frames) while SNGS-043 averaged 5.5 fragments per player — and
 SNGS-043's worst frames were always the join hand-overs. Boxes are bigger too: 86–98 px against 78.
 
 One oddity to be honest about: on tracks 10 and 17 the camera-space row has a *lower median* than
-pitch space (7.4° vs 11.4°, 8.5° vs 15.7°). That row is handed the offset that minimises its own
+pitch space (7.4° vs 12.0°, 8.5° vs 15.7°). That row is handed the offset that minimises its own
 error, and clip04's players run in a narrow range of directions, so one fixed offset can fit the
-middle well. Its tails give it away — 139.1° at the 95th against pitch space's 23.2°.
+middle well. Its tails give it away — 139.1° at the 95th against pitch space's 25.0°.
+
+**On the smoothing window**, if anyone asks why it is 9 here and 5 on SNGS-043: it is the same
+0.2 s, and clip04 runs at twice the frame rate. Sweeping it does not help — the facing error falls
+monotonically all the way to a 0.8 s window, because the travel-direction reference is itself
+smooth and rewards any smoothing at all. Across w=1..15 the median moves under 3° on every track,
+so the window is chosen on physics, not fitted.
 
 ---
 
