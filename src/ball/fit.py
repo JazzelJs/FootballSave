@@ -38,9 +38,11 @@ V_MAX = 45.0                    # m/s = 162 km/h, above any recorded shot: the f
 P0_SIGMA = 1.5                  # m: how far the kick point is allowed to move from Stage 1's H
 P0_BOUND = 4.0                  # m: and the hard limit, so it can never wander off the pitch
 Z_TOL = 0.05                    # m: how hard the ball is pushed back above the grass (see residuals)
-KICK = {"SNGS-043": 602, "clip04": 196}  # the frame the shot leaves the boot, found against the video
+KICK = {"SNGS-043": 602, "clip04": 196, "SNGS-028": 387}  # the frame the shot leaves the boot, found against the video
 # What the video shows happened, so C2 can say whether the fit AGREES rather than just "wrong".
-SCORED = {"SNGS-043": True, "clip04": False}  # clip04 is the near miss this project started from
+SCORED = {"SNGS-043": True, "clip04": False, "SNGS-028": False}  # did the shot go in, per the video
+# Where free flight ends, when flight_window() cannot see it. Same kind of per-clip fact as KICK.
+WINDOW_END = {"SNGS-028": 395}
 
 
 # ---------------------------------------------------------------- inputs
@@ -80,13 +82,23 @@ def kick_frame(rows, clip, override=None):
                      + "\nWatch those frames, then pass --kick <frame> or add it to KICK.")
 
 
-def flight_window(rows, kick):
+def flight_window(rows, kick, clip=None):
     """kick .. the last frame before the pixel path turns back on itself.
 
-    The ball hits the net and the label follows it back down, so the track REVERSES: after 622
-    the x pixel falls 1399 -> 1385 and y climbs 448 -> 495. Fitting a parabola through that
-    drags the curve through a ball that has already stopped, so the window has to end there.
+    The ball hits the net and the label follows it back down, so the track REVERSES: on SNGS-043
+    after 622 the x pixel falls 1399 -> 1385 and y climbs 448 -> 495. Fitting a parabola through
+    that drags the curve through a ball that has already stopped.
+
+    **This rule only works for a shot that HITS something.** A shot off target never reverses, so
+    on SNGS-028 it ran to the end of the data, 387-413, and the fit degraded from 8.6 px to
+    24.8 px. The late frames are not free flight failing -- they are the annotation failing: from
+    frame 396 the steps alternate 64, 7, 37, 74, 2, 71 (the mistimed-label signature from A2, too
+    big for clean.py's ratio test to catch) and the box stays a constant 20-21 px while the ball
+    flies 40 m away, where SNGS-043's shrank 24 -> 11 px. So WINDOW_END carries the answer for a
+    clip where the track gives no reversal to find.
     """
+    if clip in WINDOW_END:
+        return kick, WINDOW_END[clip]
     frames = sorted(f for f in rows if f >= kick)
     first = np.array(rows[frames[1]]["px"]) - np.array(rows[frames[0]]["px"])
     first /= np.linalg.norm(first)
@@ -264,7 +276,7 @@ def shadow_gap(clip, rows, p0, v0, k, frames, times):
 def run(clip, with_drag=True, quiet=False, kick_override=None):
     fps, rows, homographies, cameras = load(clip)
     kick = kick_frame(rows, clip, kick_override)
-    window = flight_window(rows, kick)
+    window = flight_window(rows, kick, clip)
     p0_h = np.array([*kick_point(homographies, rows, kick), 0.0])
     result = fit(clip, rows, cameras, p0_h, window, fps, with_drag)
 
@@ -348,7 +360,7 @@ def demo():
     fps, rows, homographies, cameras = load("SNGS-043")
     kick = kick_frame(rows, "SNGS-043")
     assert kick == 602, f"kick detected at {kick}, the pixel step says 602"
-    assert flight_window(rows, kick) == (602, 622), flight_window(rows, kick)
+    assert flight_window(rows, kick, "SNGS-043") == (602, 622), flight_window(rows, kick, "SNGS-043")
 
     # A3's real check. Comparing 602 with 601 mixes two things -- our camera's error AND the ball
     # already leaving the boot -- so measure the camera on its own: at 601 the ball IS on the
