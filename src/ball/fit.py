@@ -148,9 +148,16 @@ def to_pixels(clip, cameras, frames, points):
 def residuals(unknowns, clip, cameras, frames, times, observed, p0_h, with_drag):
     """What least_squares minimises: (predicted pixel - observed pixel), plus a prior on p0.
 
-    18 frames x 2 coordinates = 36 pixel numbers against 5 unknowns (6 with drag). The fit is
-    only ever compared against real measurements -- pixels. Nothing here needs to know the ball's
+    On SNGS-043 that is 15 frames x 2 coordinates = 30 pixel numbers, plus 2 for the kick point's
+    drift and 15 for the above-ground penalty: 47 residuals against 6 unknowns. The fit is only
+    ever compared against real measurements -- pixels. Nothing here needs to know the ball's
     depth, which is exactly the quantity one camera cannot give us.
+
+    Mind the UNITS. least_squares squares and sums all 47 of these together, so dividing by
+    P0_SIGMA and Z_TOL is not cosmetic -- it is what sets how strongly each prior pulls. One
+    pixel of image error contributes 1. A kick point dragged its full 1.5 m leash contributes
+    1 too. A ball 5 cm underground (Z_TOL) also contributes 1, so 25 cm underground costs 25 --
+    about as much as five pixels of image error on every single frame at once.
 
     Why the kick point is an unknown and not a constant. Stage 1's H puts it at y = 14.18 m; the
     labels' own calibration puts the same ball at 12.74 m. Our camera is good to 0.55 m median on

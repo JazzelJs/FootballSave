@@ -51,15 +51,18 @@ const query = new URLSearchParams(location.search);
 const clip = query.get('clip') || 'SNGS-043';
 // The macOS bundle stages data beside this file; the development server keeps the repo layout.
 const dataRoot = location.protocol === 'file:' ? './data' : '../../data';
-const POSES = [{
-  trackId: 1131,
-  file: 'pose/mesh/pose_1131.smpl'
-},
+// Poses belong to ONE clip: a track id means nothing outside the clip it was tracked in. Without
+// the `clip` field the viewer loaded these four meshes on clip04 too and announced "4 posed
+// tracks" for a clip that has none -- and id 1131 could land on whoever clip04 happens to call
+// 1131. ALL_POSES is the catalogue; POSES is what this clip actually has.
+const ALL_POSES = [
+  { clip: 'SNGS-043', trackId: 1131, file: 'pose/mesh/pose_1131.smpl' },  // the shooter
   // The three stable players nearest the goal during clip time 00:00:15–00:00:25.
-  { trackId: 284, file: 'pose/mesh/pose_284.smpl' },
-  { trackId: 17, file: 'pose/mesh/pose_17.smpl' },
-  { trackId: 171, file: 'pose/mesh/pose_171.smpl' }
+  { clip: 'SNGS-043', trackId: 284, file: 'pose/mesh/pose_284.smpl' },
+  { clip: 'SNGS-043', trackId: 17, file: 'pose/mesh/pose_17.smpl' },
+  { clip: 'SNGS-043', trackId: 171, file: 'pose/mesh/pose_171.smpl' }
 ];
+const POSES = ALL_POSES.filter(pose => pose.clip === clip);
 
 const scene = new THREE.Scene();
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -237,11 +240,18 @@ let gaps = [], showGaps = false;
 // we have a real 3D position with a HEIGHT, from src/ball/fit.py. Outside it all we have is a
 // pixel, and a pixel alone cannot give depth -- so there we fall back to putting the ball on the
 // grass with the inverse homography, which is only true while the ball really is on the grass.
+//
+// Which pixel matters. The fallback used to read `ball_px` out of tracks.json, which is the
+// PLAYER detector's most confident "ball" box -- on clip04 that jumps 1690 px between frames,
+// because it hops to the spare balls by the ad boards. data/ball/<clip>_clean.json is the ball
+// detector's track after Stage 5's cleaning (95% step 31 px, and it never invents a frame), so
+// prefer it and keep tracks.json only for a clip that has no ball file at all (SNGS-028).
 const ball = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8),
   new THREE.MeshLambertMaterial({ color: 0xffffff }));
 scene.add(ball);
 let cameraFrames = new Map();
 let ballFlight = new Map();   // frame -> [x, y, z] in pitch meters, only inside the fitted window
+let ballPixels = new Map();   // frame -> [u, v], the cleaned 2D track, for frames outside the flight
 
 function drawBall(frame) {
   const flight = ballFlight.get(frame);
@@ -255,8 +265,8 @@ function drawBall(frame) {
     return;
   }
   ball.material.color.setHex(0xffffff);
-  const record = data.frames.find(f => f.frame === frame);
-  const px = record?.ball_px, H = cameraFrames.get(frame);
+  const px = ballPixels.get(frame) ?? data.frames.find(f => f.frame === frame)?.ball_px;
+  const H = cameraFrames.get(frame);
   if (!px || !H) { ball.visible = false; return; }
   const inv = new THREE.Matrix3().set(
     H[0][0], H[0][1], H[0][2], H[1][0], H[1][1], H[1][2], H[2][0], H[2][1], H[2][2]).invert();
@@ -402,22 +412,29 @@ Promise.all([
   // the previous one, and an old camera-space mesh renders upside down under the current code.
   // Optional: a clip without a fitted flight still works, it just has no flying ball.
   fetch(`${dataRoot}/ball/${clip}_fit.json`).then(r => r.ok ? r.json() : null).catch(() => null),
+  fetch(`${dataRoot}/ball/${clip}_clean.json`).then(r => r.ok ? r.json() : null).catch(() => null),
   ...POSES.map(pose => fetch(`${dataRoot}/${pose.file}`, { cache: 'no-cache' })
     .then(r => r.ok ? r.arrayBuffer() : null))
 ])
-  .then(([d, camera, ballFit, ...meshes]) => {
+  .then(([d, camera, ballFit, ballClean, ...meshes]) => {
     data = d;
     cameraFrames = new Map(camera.frames.map(f => [f.frame, f.H]));
     if (ballFit) ballFlight = new Map(ballFit.path_frames.map((f, i) => [f, ballFit.path[i]]));
+    // Only `label` rows: a `filled` row is our own interpolation and a `dropped` one we already
+    // decided not to trust, so neither belongs in the picture as if it were a measurement.
+    if (ballClean) ballPixels = new Map(ballClean.frames
+      .filter(r => r.source === 'label').map(r => [r.frame, r.px]));
     meshes.forEach((mesh, index) => { if (mesh) loadSMPL(mesh, POSES[index]); });
     gaps = findGaps(d.frames);
     scrub.max = d.frames.length - 1;
     const loadedPoses = POSES.filter(pose => pose.smpl).length;
-    msg.textContent = `${d.clip} — ${d.frames.length} frames — ${loadedPoses} posed tracks — `
+    msg.textContent = `${d.clip} — ${d.frames.length} frames — `
+      + (POSES.length ? `${loadedPoses} posed tracks — ` : 'capsules only, no poses — ')
       + (ballFlight.size ? `ball in 3D for frames ${ballFit.window[0]}–${ballFit.window[1]} `
           + `(${ballFit.speed_kmh.toFixed(0)} km/h, ${ballFit.px_median.toFixed(1)} px)`
         : 'calibrated ball when visible');
-    console.assert(poseSample(POSES[0], 599)?.mix === 0.5 && posePlayer(POSES[0], 599), 'frame 599 must interpolate pose and position');
+    // Frame 599 is SNGS-043's interpolated pose frame, so only assert it on that clip.
+    if (clip === 'SNGS-043') console.assert(poseSample(POSES[0], 599)?.mix === 0.5 && posePlayer(POSES[0], 599), 'frame 599 must interpolate pose and position');
     const firstPoseIndex = d.frames.findIndex(f => POSES.some(pose => poseSample(pose, f.frame) && posePlayer(pose, f.frame)));
     show(firstPoseIndex >= 0 ? firstPoseIndex : 0);
     if (firstPoseIndex >= 0) poseView.onclick();
