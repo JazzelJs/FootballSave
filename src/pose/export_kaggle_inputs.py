@@ -92,8 +92,11 @@ def main(clip, tracks, window, with_frames):
     print("\nKaggle steps:")
     print(f"  1. Upload this zip as a private dataset (or add it to an existing one).")
     if not with_frames:
-        print(f"  2. Attach the frames dataset too — clip04's is `jazzeljs/clip04-data-football`."
-              f" Rerun with --with-frames for a clip that has none.")
+        known = ("`jazzeljs/clip04-data-football` (= data/clip04_frames.zip)" if clip == "clip04"
+                 else "the SoccerNet frames dataset (= data/soccernet_frames.zip, SNGS-028 + SNGS-043)"
+                 if clip.startswith("SNGS-") else "this clip's frames dataset")
+        print(f"  2. Attach the frames dataset too — {known}."
+              f" Rerun with --with-frames if it is not on Kaggle yet.")
     print("  3. Attach your private SMPL input (basicmodel_m_lbs_10_207_0_v1.1.0.pkl) and, if you"
           " saved one, the private `hmr2_cache` dataset.")
     print(f"  4. Import notebooks/kaggle/football3d_{clip}_poses.ipynb, enable Internet + a T4 GPU,"

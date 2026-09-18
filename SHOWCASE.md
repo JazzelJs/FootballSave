@@ -1,4 +1,4 @@
-# Two versions to show
+# Three versions to show
 
 Both run the same code. The difference is what the clip has behind it. Start the server once from
 the repo root and open either URL:
@@ -91,12 +91,67 @@ so the window is chosen on physics, not fitted.
 
 ---
 
+## Version 3 — SNGS-028: a miss, with ground truth
+
+`http://localhost:8000/src/viewer/?clip=SNGS-028` — **scrub to ~15.5 s.**
+
+The cell the other two do not cover. clip04 misses but has no ground truth; SNGS-043 has ground
+truth but scores. This one **misses and is labelled**, so the "outside the posts" claim can be
+checked rather than believed.
+
+| | |
+|---|---|
+| players | 750 frames, positions **0.70 m** median error, **96%** team correct (the best of the three) |
+| posed bodies | **none yet** — one Kaggle session, `notebooks/kaggle/football3d_sngs028_poses.ipynb` |
+| ball in 3D | **78 km/h**, 8.57 px, crossing at **x −4.16 m, z 2.20 m** — wide of the post and under the bar ✅ |
+
+`action_class` is "Shots off target", and the fit independently puts the ball **0.5 m outside the
+near post, 0.24 m under the bar**. Three clips, three outcomes, three times the fit agreed with
+what actually happened without being told.
+
+**Say this if you show it, because it is the weakest of the three fits:** only **9 usable frames**
+against 6 unknowns, and our camera disagrees with the labels by **5.04 m** at the kick point
+(1.55 m on SNGS-043). Treat 78 km/h as indicative, not measured.
+
+### What this clip taught us, which is the better story
+
+The first attempt fitted at **24.79 px** and I blamed the ball for being airborne. Wrong on both
+counts:
+- The test used — pixel motion versus the motion a grass-bound ball would make — is **confounded
+  by camera pan**. A broadcast camera follows the ball, so a moving ball sits almost still in the
+  image. Low pixel motion with high grass motion is *tracking*, not *flying*.
+- The real fault was our own window rule. It ends the flight where the pixel track **reverses** —
+  which is the ball hitting the net. **A shot off target never reverses**, so it ran to the end of
+  the data and the fit degraded 8.57 → 24.79 px as the window grew.
+- And the late frames were bad annotation, not bad physics: from frame 396 the steps alternate
+  64, 7, 37, 74, 2, 71, and the box stays a constant 20–21 px while the ball flies 40 m away,
+  where SNGS-043's shrank 24 → 11 px.
+
+### To finish Version 3 — one Kaggle session
+
+**Crops are the biggest of all three clips: 104–150 px median** (clip04 86–98, SNGS-043 78),
+because this camera is tighter, and Stage 4's ceiling was crop size.
+
+```
+uv run python src/pose/export_kaggle_inputs.py SNGS-028 14 899 904 493 --window 275 425
+```
+
+**Seconds 11–17 (frames 275–425), not the whole clip:** SNGS-028's camera fails on 69 frames and
+the two long runs are 97–123 and 236–264, which that window clears while still containing the shot
+at 387. Track **14 is the shooter**. About 520 crops, less than half the clip04 run.
+
+The catch: its tracking is the weakest of the three — **6.1 fragments per real player** against
+SNGS-043's 5.5, and 18% of true players missed. Expect more ID trouble, not less.
+
+---
+
 ## Supporting material already rendered
 
 | file | what |
 |---|---|
 | `outputs/ball_fit_SNGS-043.mp4` | the fitted flight on the broadcast frames |
 | `outputs/ball_fit_clip04.mp4` | same for our clip |
+| `outputs/ball_fit_SNGS-028.mp4` | same for the shot off target |
 | `outputs/ball_fit_clip04_000210.jpg` | one frame: fit on the ball, trajectory past the post |
 | `outputs/ball_shadow_SNGS-043.png` | C3 — and why it cannot measure height on this clip |
 | `outputs/facing_SNGS-043_000602.jpg` | facing arrows at the kick |
