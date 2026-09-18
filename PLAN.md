@@ -307,17 +307,45 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
    this clip; the ball detector's whole-clip recall is only 53% even at native resolution; and
    PLAN.md's 4.2 m figure for depth-from-size does not survive contact with the data (we measure
    17.9 m), so the baseline our fit "had to beat" was set four times too kindly.
-3. **Parked, not blocking:** track 171's facing is 30° median over 68 running samples and its worst
+3. **clip04 poses are prepared and waiting on one Kaggle session** (written 2026-09-18).
+   `uv run python src/pose/export_kaggle_inputs.py clip04 10 15 17 9` →
+   `data/kaggle/clip04_pose_inputs.zip` (0.1 MB: the raw track JSON + a manifest that makes a
+   stale upload fail loudly), then `notebooks/kaggle/football3d_clip04_poses.ipynb`.
+   **clip04 is a better pose target than SNGS-043, measured:** boxes **86–98 px** tall (clip
+   median 92) against the **78 px** of SNGS-043's shooter, and the tracks are **unbroken** —
+   313–337 boxes out of 337 frames, so no `TARGETS` entry needs several raw ids and the join
+   hand-over that ruined track 171's facing cannot happen. **Track 10 is the shooter** (2.1 m from
+   the ball at 192, 2.2 m at 196). The others sit 13–18 m out, in the ball's path.
+   Deliberately **not** pre-cropped: HMR2 takes the full frame plus a box, and `orient.py`'s CLIFF
+   correction needs the box centre in full-frame pixels — pre-cropped images would silently break
+   every facing angle.
+   After the run: `export_smpl_mesh.py --clip clip04 --track <id> --smooth-yaw 5`, then add
+   `{ clip: 'clip04', trackId: <id>, … }` to `ALL_POSES`. Two things to check, not assume: clip04
+   has **no ground truth**, so no PA-MPJPE — only the travel-direction proxy with its ~10° floor;
+   and clip04 is **49.95 fps**, so `--smooth-yaw 5` is 0.1 s here against 0.2 s on SNGS-043.
+4. **Viewer fixes, 2026-09-18** (found by asking which clips are showcasable):
+   - The 2D fallback ball read `ball_px` from `tracks.json` — the *player* detector's ball, which
+     on clip04 jumps **1690 px** to the spare balls by the ad boards. It now reads
+     `data/ball/<clip>_clean.json` (`label` rows only), falling back to `tracks.json` only for a
+     clip with no ball file (SNGS-028).
+   - **Poses were not clip-aware.** `POSES` was a flat list of SNGS-043's four tracks loaded on
+     every clip, so clip04 announced "4 posed tracks" it does not have and id 1131 could have
+     landed on whoever clip04 calls 1131. Now `ALL_POSES` carries a `clip` field and `POSES`
+     filters on it; clip04 reads "capsules only, no poses". An SNGS-043-only `console.assert`
+     (frame 599) is guarded too.
+5. **`SHOWCASE.md` is the two demo versions** — what each clip has, the numbers, the exact URL and
+   frame to scrub to, and the honest limits to admit if asked.
+6. **Parked, not blocking:** track 171's facing is 30° median over 68 running samples and its worst
    frames (568–572) are the hand-over inside the joined track. That is a tracking problem, and it is
    the Stage 2 team-colour idea coming back.
-4. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
+7. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
    *where* vs *who*, foot point → meters, wobble, goal side. 2026-09-16 has its `LEARNING_LOG.md`
    entry; parts of it are Claude's wording and I should rewrite those in my own words.
-5. Open questions I haven't answered yet (no rush, they're small):
+8. Open questions I haven't answered yet (no rush, they're small):
    - (B)'s biggest error is exactly 3.00 m while (A)'s is 12.9 m. Why, and what does that do to
      comparing (B) with (A)?
    - If PnLCalib gave a perfect camera tomorrow, which file changes: `data/track/…` or `data/tracks/…`?
-6. Left in Stage 2 on purpose, to pick up when it matters: use the team colours to refuse a join or a
+9. Left in Stage 2 on purpose, to pick up when it matters: use the team colours to refuse a join or a
    tracker hand-over between two different kits (69% of ID switches are swaps, which joining can't fix).
 
 **Pipeline for a clip, as it runs today** (all from the repo root, all local on the Mac):
