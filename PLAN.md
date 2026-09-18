@@ -8,7 +8,55 @@ Rule of thumb: if a stage takes more than ~2x the estimate, stop and ask Claude
 
 ---
 
-## Current status (updated 2026-09-18, Stage 5 A–C + E2) — read this first in a new chat
+## Current status — READ THIS FIRST (updated 2026-09-18)
+
+**Stages 0–5 are all complete and measured. There is no blocked work.** What is left is mine to
+write, not to build: the "Explain it back" answers and the `LEARNING_LOG.md` entries.
+
+**The pipeline end to end, and what each stage is worth:**
+
+| stage | what it does | the number |
+|---|---|---|
+| 1 camera | PnLCalib → H and the full camera per frame | 0.55 m median on the grass |
+| 2 players | YOLO + BoT-SORT → positions, teams | **0.48 m** median, 89% team correct |
+| 4 bodies | HMR2 → SMPL, rotated into pitch space | **113 mm** PA-MPJPE, facing 6–22° |
+| 5 ball | one-camera physics fit | **3.70 px**, 117 km/h, inside the post |
+
+**Two clips are demo-ready. `SHOWCASE.md` has the links, the talking points and the limits.**
+
+| | SNGS-043 (a goal) | clip04 (a near miss, our clip) |
+|---|---|---|
+| ground truth | yes, SoccerNet labels | **none at all** |
+| posed bodies | 4 (tracks 1131, 284, 17, 171) | 4 (tracks 10, 15, 17, 9) |
+| ball in 3D | 117 km/h, 3.70 px, **inside** ✅ | 106 km/h, 9.20 px, **0.87 m outside** ✅ |
+| best view | `?clip=SNGS-043`, 24.3 s, press `c` | `?clip=clip04`, 4.2 s, `pose view` |
+
+Both fits land on the one fact nobody annotated — the goal scored, the near miss missed.
+
+**If you change anything, these must still pass:**
+```
+uv run python src/ball/clean.py --self-check
+uv run python src/ball/fit.py --self-check          # 3.70 px, 117 km/h, x +3.24 z -0.07
+uv run python src/ball/size_baseline.py --self-check
+uv run python src/pose/orientation_error.py SNGS-043 284   # 10.4° / 66.6°, unchanged since 09-18
+```
+
+**What to read, in order, and nothing else:** this block → "Next session" below → the runbook →
+`SHOWCASE.md` if you are demoing → `git log --oneline -10`. **The dated history below is
+reference, not required reading** — go there only when you need to know why a decision was made.
+
+**Three traps this project has already fallen into.** They will recur:
+1. **A track id means nothing without its clip.** SNGS-043 and clip04 both have a track 17.
+   Pose files are `pose_<clip>_<track>.npz`; the viewer's `ALL_POSES` carries a `clip` field.
+2. **Per-pixel rules break when the camera pans.** "Objects that never move" found zero in pixel
+   space and the culprit in metre space. Ask whether a rule belongs in the image or on the grass.
+3. **Never tune a parameter against a metric it can game.** The yaw-smoothing sweep falls
+   monotonically to a 0.8 s window, because the travel-direction reference is itself smooth.
+
+---
+
+### Where we are, in detail
+
 
 **Where we are (facing direction now validated, 2026-09-18):** Stage 0 ✅ · Stage 1 ✅ · Stage 2 ✅ · **Stage 3: all the code is done ✅**
 (viewer, capsules by team, orbit + goalkeeper cameras, gaps toggle, interpolation — see the stage
@@ -23,6 +71,187 @@ Clips: **clip04** (our match, no ground truth) and the SoccerNet GSR clips **SNG
 target) + **SNGS-043** (goal). Committed and pushed to GitHub (JazzelJs/FootballSave, `main`).
 The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, where the dots are ·
 **(C)** identity, whether a dot keeps its name · **(D)** teams.
+
+**Start the next session with:**
+1. **Stage 4 checkpoint is complete** (19.7 px reprojection · 113.3 mm PA-MPJPE · facing stated both
+   ways). Owed before it closes, both mine: the three "Explain it back" answers, and the
+   `LEARNING_LOG.md` wrap-up for 2026-09-15.
+2. **Stage 5 is COMPLETE (2026-09-18): A, B, C, D, E all done and measured.**
+   All of it was written by Claude on my "just do it" / "do it for me" under time pressure, so the
+   whole stage owes me the walk-through and the "Explain it back".
+   Headline: the shot is fitted in 3D from one camera at **3.70 px median reprojection**,
+   **117 km/h**, crossing the goal line **0.42 m inside the post** — a goal, which is free ground
+   truth nobody annotated. Pipeline: `from_labels.py` → `clean.py` → `fit.py` → `draw.py`, and
+   `detect.py --write` in place of labels on a clip that has none.
+   **Nothing in Stage 5 is blocked. What is owed is all mine:** the walk-through I asked Claude
+   to defer, the "Explain it back", and the `LEARNING_LOG.md` entries.
+   **Both clips, side by side — and each one's checkable fact came out right:**
+   | | SNGS-043 (a goal) | clip04 (a near miss) |
+   |---|---|---|
+   | kick frame | 602 | 196 |
+   | usable frames | 15 | 29 |
+   | reprojection | **3.70 px** | **9.20 px** |
+   | launch speed | 117 km/h | 106 km/h |
+   | at the goal line | x +3.24 m → **inside** ✅ | x +4.53 m → **outside** ✅ |
+   **The four things in this stage I should be able to explain before it closes:**
+   - Why the unconstrained fit chose 272 km/h *into the ground*, and why `vz ≥ 0` is a
+     measurement-free fact that fixes it.
+   - Why two answers 0.4 px apart can be 70 km/h and 171 km/h, and what that says about how much
+     a single camera can ever know.
+   - Why free flight ends at the goal line (617) and not where the pixel step collapses (622).
+   - Why binning "objects that never move" in pixels found nothing, and in metres found the
+     culprit — and what that says about every other per-pixel rule in this repo.
+   - Why depth-from-size is wrong by a fixed *percentage* of the distance rather than a fixed
+     number of metres, and why a correction factor could not fix it.
+   - Why frame 601 is a *corner* and frame 204 is an *outlier*, when both sit off the line through
+     their neighbours — and why no threshold can tell them apart cleanly.
+   **Known soft spots, stated rather than hidden:** k = 0.046 1/m is 3.5× a real ball's, so drag
+   is absorbing other errors; C2's 0.42 m margin is smaller than our camera's 2.25 m error at the
+   ball; C3's shadow plot is dominated by that same camera offset, so it cannot measure height on
+   this clip; the ball detector's whole-clip recall is only 53% even at native resolution; and
+   PLAN.md's 4.2 m figure for depth-from-size does not survive contact with the data (we measure
+   17.9 m), so the baseline our fit "had to beat" was set four times too kindly.
+3. **clip04 poses DONE 2026-09-18** — I ran the Kaggle notebook myself
+   (`notebooks/kaggle/football3d_clip04_poses.ipynb`), 4 tracks, 337/313/332/337 frames at 49.95 fps.
+   **clip04's poses beat SNGS-043's, and exactly where predicted — in the tails:**
+   | facing error, median / 95th | track 10 (shooter) | 15 | 17 | 9 |
+   |---|---|---|---|---|
+   | samples above 3 m/s | 61 of 337 | 128 of 313 | 86 of 332 | 62 of 337 |
+   | **pitch space** | **11.4° / 23.2°** | 22.3° / 51.8° | 15.7° / 42.2° | **6.3° / 23.9°** |
+   | camera space, best-case zero | 7.4° / 139.1° | 41.1° / 134.2° | 8.5° / 87.6° | 9.2° / 45.8° |
+   SNGS-043's were 10.4°/66.6°, 15.2°/52.0°, 29.9°/104.1°. Medians are comparable; **95th
+   percentiles are 2–4× better**, because clip04's tracks are unbroken and SNGS-043's worst frames
+   were always join hand-overs. Boxes 86–98 px vs 78. Unlike SNGS-043 the shooter has a real
+   number here (61 running samples, not 4).
+   **Honest oddity:** on tracks 10 and 17 the camera-space median is *lower* than pitch space
+   (7.4 vs 11.4, 8.5 vs 15.7). That row gets the offset minimising its own error and clip04's
+   players run in a narrow spread of directions, so one offset fits the middle. Its tails give it
+   away: 139.1° vs 23.2°.
+   **Pose files are now named per clip.** A track id means nothing without its clip: SNGS-043 has
+   a track 17 and so does clip04, and downloading the new one nearly destroyed the old — the
+   browser saved it as `pose_17-3.npz` instead of overwriting, which is the only reason nothing
+   was lost. Three scripts built the flat `pose_{id}.npz` path, so the collision was in the code
+   too. New `orient.pose_npz(clip, track)` / `orient.pose_mesh(clip, track)` →
+   `pose_<clip>_<track>.npz`; `draw_facing.py`, `orientation_error.py` and `reproject_smpl.py` use
+   it, and the 8 active files were renamed. SNGS-043's numbers are unchanged after the rename
+   (track 284 still 10.4° / 66.6°), which is how I know nothing else moved.
+   **`--smooth-yaw` swept 1..15 (and out to 41), 2026-09-18 — and the sweep cannot choose it.**
+   | median facing error | w=1 | w=5 | w=9 | w=15 | w=31 | w=41 |
+   |---|---|---|---|---|---|---|
+   | clip04 track 17 | 16.7° | 15.7° | 15.7° | 13.9° | 11.3° | 11.6° |
+   | clip04 track 15 | 21.8° | 22.3° | 21.0° | 20.2° | 19.2° | 18.4° |
+   | SNGS-043 track 284 | 11.2° | 10.4° | 10.3° | 9.0° | 8.6° | 8.2° |
+   It falls **monotonically and never turns around**, so "optimise the window" means "smooth until
+   the signal is gone" — and w=41 is 0.82 s on clip04, 1.64 s on SNGS-043, long enough to erase
+   real turning (a player turns 180° in about half a second). **The proxy prefers smoothing because
+   the proxy is itself smooth:** travel direction comes from tracker positions 4 frames apart, so
+   it rewards anything that makes the pose yaw smoother whether or not the pose got better. A
+   parameter must never be tuned against a metric it can game.
+   What the sweep *does* establish: across w=1..15 the median moves by only **0.8–3.3°** on every
+   track of both clips — inside the proxy's noise. So pick the window on physics and keep it
+   consistent in **time**: raw per-frame yaw change is 1.5–2.2°/frame on clip04 against 3.6–4.2°
+   on SNGS-043, a ratio of ~2 which is exactly 49.95/25 — the same angular noise spread over twice
+   as many frames. SNGS-043's w=5 at 25 fps is 0.20 s, so clip04 is re-exported at **w=9**
+   (0.18 s). The numbers did not move: 12.0 / 21.0 / 15.7 / 6.4° against 11.4 / 22.3 / 15.7 / 6.3°.
+   **The step I had left out of my own instructions:** HMR2 saves pose *parameters*, not vertices,
+   so `apply_smpl.py --input … --output …_vertices.npz` runs **before** `export_smpl_mesh.py`.
+   `export_kaggle_inputs.py` now prints the full seven steps.
+4. **Viewer fixes, 2026-09-18** (found by asking which clips are showcasable):
+   - The 2D fallback ball read `ball_px` from `tracks.json` — the *player* detector's ball, which
+     on clip04 jumps **1690 px** to the spare balls by the ad boards. It now reads
+     `data/ball/<clip>_clean.json` (`label` rows only), falling back to `tracks.json` only for a
+     clip with no ball file (SNGS-028).
+   - **Poses were not clip-aware.** `POSES` was a flat list of SNGS-043's four tracks loaded on
+     every clip, so clip04 announced "4 posed tracks" it does not have and id 1131 could have
+     landed on whoever clip04 calls 1131. Now `ALL_POSES` carries a `clip` field and `POSES`
+     filters on it; clip04 reads "capsules only, no poses". An SNGS-043-only `console.assert`
+     (frame 599) is guarded too.
+5. **`SHOWCASE.md` is the two demo versions** — what each clip has, the numbers, the exact URL and
+   frame to scrub to, and the honest limits to admit if asked.
+6. **Parked, not blocking:** track 171's facing is 30° median over 68 running samples and its worst
+   frames (568–572) are the hand-over inside the joined track. That is a tracking problem, and it is
+   the Stage 2 team-colour idea coming back.
+7. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
+   *where* vs *who*, foot point → meters, wobble, goal side. 2026-09-16 has its `LEARNING_LOG.md`
+   entry; parts of it are Claude's wording and I should rewrite those in my own words.
+8. Open questions I haven't answered yet (no rush, they're small):
+   - (B)'s biggest error is exactly 3.00 m while (A)'s is 12.9 m. Why, and what does that do to
+     comparing (B) with (A)?
+   - If PnLCalib gave a perfect camera tomorrow, which file changes: `data/track/…` or `data/tracks/…`?
+9. Left in Stage 2 on purpose, to pick up when it matters: use the team colours to refuse a join or a
+   tracker hand-over between two different kits (69% of ID switches are swaps, which joining can't fix).
+
+**Pipeline for a clip, as it runs today** (all from the repo root, all local on the Mac):
+1. Frames: `src/extract_frames.sh "<source video>" clip04 00:02:09 00:02:15.74` →
+   `data/frames/clip04/00000.jpg …` (source video + times in `data/clips/README.md`).
+2. Camera per frame: PnLCalib on Kaggle (`notebooks/kaggle/pnlcalib_clip04.ipynb`) →
+   `data/pnlcalib/pnlcalib_raw_clip04.json` → `uv run python src/calib/export_camera.py clip04` →
+   `data/camera/clip04.json`. Checked against my clicks with `src/calib/compare_pnl.py clip04`.
+3. Detection + tracking: `uv run python src/track/detect_track.py clip04` (~1 min on MPS) →
+   `data/track/clip04_football-player-detection-v9_botsort.json` (raw boxes, pixels).
+4. Feet → meters: `uv run python src/track/to_pitch.py clip04` → `data/tracks/clip04.json`
+   (= `tracks.json`). Also smooths each track over `SMOOTH_S` = 0.84 s and joins track pieces
+   (`JOIN_GAP_S` = 1 s, `JOIN_DIST` = 3 m). Prints check 1 (clicks → meters) and check 2 (top speed
+   per ID). `to_pitch.py clip04 0` turns smoothing off, any other number = window in frames.
+5. Teams: `uv run python src/track/teams.py clip04` → fills `team` in the same `tracks.json`
+   ("A" / "B" / "other"). Run it after `to_pitch.py`, which resets `team` to null.
+6. Minimap: `uv run python src/track/minimap.py clip04` → `outputs/minimap_clip04.mp4` (dot = team,
+   trail = track id, white rings = ground truth on SoccerNet clips).
+   Boxes-only video for comparing detectors/trackers: `src/track/draw_tracks.py <raw json>`.
+7. Watch it in 3D: `python3 -m http.server 8000` **from the repo root**, then
+   `http://localhost:8000/src/viewer/?clip=clip04`. Buttons: goal view (`c`), show gaps (`g`).
+   After editing the page, hard-reload (Cmd-Shift-R) or the browser serves the old one.
+
+**SoccerNet GSR clip (ground truth), as it runs today:**
+1. `uv run python src/track/fetch_soccernet.py` (list clips) → `… fetch_soccernet.py SNGS-028` →
+   `data/soccernet/SNGS-028/img1/000001.jpg …` + `Labels-GameState.json`. Add the clip to
+   `GOAL_SIDE` in `src/calib/compare_pnl.py`.
+2. Zip `<clip>/img1` → Kaggle dataset → `notebooks/kaggle/pnlcalib_soccernet.ipynb` →
+   `data/pnlcalib/pnlcalib_raw_<clip>.json` → `uv run python src/calib/export_camera.py SNGS-028`.
+3. Steps 3–5 of the clip pipeline above work on SoccerNet clips too (`detect_track.py SNGS-028`
+   ~3 min, `to_pitch.py SNGS-028`, `minimap.py SNGS-028` with the true players as white rings).
+4. `uv run python src/track/eval_soccernet.py SNGS-028` → the four numbers: **(A)** camera only
+   (their perfect boxes through our H), **(B)** full pipeline (where our dots are, plus missed and
+   extra), **(C)** identity (our ids per real player, ID switches, merged ids), **(D)** teams.
+
+**Known issues, parked on purpose (and where each one gets fixed):**
+- **Track IDs are still not one-per-player:** 24 IDs for ~20 people on clip04. Causes: extra
+  boxes where two players overlap (#113, #171, #19, #265 — #265 "runs" 12.9 m/s), and the
+  goalkeeper lost at frame 228 → back as #250 at 262. Longer tracker memory and appearance re-ID
+  did NOT help (tested). Planned fix = "join track pieces in meters" (Stage 2 → Build), measured
+  against SoccerNet.
+- **Wobble:** 0.17 m per dot on average (95% under 0.46 m, max 1.49 m). Split: camera part
+  (all dots move together, PnLCalib) 0.10 m, box part (each dot alone) 0.14 m, all big jumps are
+  boxes. Fixes: smoothing per track (Stage 2, measured vs SoccerNet), ankles instead of box
+  bottom (Stage 4), steadier camera (before Stage 5).
+- **PnLCalib camera "moves" ~8 m while zooming** (zoom vs distance trade-off). Fix with one fixed
+  camera position per clip, only pan/tilt/zoom per frame — before Stage 5.
+- **Class labels of the football detector are unreliable on our match:** the referee is called
+  "player" 97% of the time, a Barcelona player "referee" 90 times, the goalkeeper right only
+  about half the time. Use it for *where*, not *who*. `team` in `tracks.json` is `null` →
+  team classification is still needed before Stage 3 (team colours).
+- **Ball:** 2–4 "ball" boxes in 255 of 337 frames (spare balls by the ad boards, false boxes),
+  so "ball found in 296 frames" is too optimistic. `ball_px` = most confident box. Stage 5.
+- **`MIN_CONF = 0.5`** in `src/track/to_pitch.py` (drop person tracks with a lower mean YOLO
+  confidence) was picked on clip04 alone: junk 0.20–0.43, real players ≥ 0.60. Re-check the gap
+  on other clips/recordings.
+- **Touchlines** on the minimap assume a 68 m wide pitch (±34 m): drawing only, never measured.
+- ~~clip04-only `pitch_to_soccernet`~~ Fixed 2026-09-15: `GOAL_SIDE[clip]` in `compare_pnl.py`
+  ("left"/"right" = SoccerNet X = ∓52.5), checked on SNGS-033 frame 400 with the label positions
+  (`outputs/axes_SNGS-033_00400.jpg`). A new clip needs its line in `GOAL_SIDE`.
+- **Questions I skipped on 2026-09-15/16 (optional):** where on a pitch does the camera see the
+  fewest lines? Will (A) be bigger or smaller than clip04's 0.35 m, and why? Why can't
+  `rep_err_px` alone be trusted? Why does the right goal put the keeper's right at −Y?
+- **Questions I skipped (optional to revisit):** is the worst check-1 point (0.98 m) far from
+  the camera or near, and why? What is #265 at 12.9 m/s around frame 325? How far behind a player
+  does a knee-height box put him (head at 1.8 m → 6.6 m behind)?
+
+---
+
+
+---
+
+## History — how each number was reached (reference, not required reading)
 
 **What happened on 2026-09-15/16 (not in `LEARNING_LOG.md` yet):**
 - Downloaded SoccerNet GSR clips with `src/track/fetch_soccernet.py` (reads one clip out of the
@@ -267,182 +496,6 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
   ceiling on what it can prove, not the true facing error. KTH is the only real ground truth.
 - **Decision:** use SMPL directly for now. Do not spend the next step retargeting the Quaternius or
   Sketchfab character; a display character would add work without improving the pose estimate.
-
-**Start the next session with:**
-1. **Stage 4 checkpoint is complete** (19.7 px reprojection · 113.3 mm PA-MPJPE · facing stated both
-   ways). Owed before it closes, both mine: the three "Explain it back" answers, and the
-   `LEARNING_LOG.md` wrap-up for 2026-09-15.
-2. **Stage 5 is COMPLETE (2026-09-18): A, B, C, D, E all done and measured.**
-   All of it was written by Claude on my "just do it" / "do it for me" under time pressure, so the
-   whole stage owes me the walk-through and the "Explain it back".
-   Headline: the shot is fitted in 3D from one camera at **3.70 px median reprojection**,
-   **117 km/h**, crossing the goal line **0.42 m inside the post** — a goal, which is free ground
-   truth nobody annotated. Pipeline: `from_labels.py` → `clean.py` → `fit.py` → `draw.py`, and
-   `detect.py --write` in place of labels on a clip that has none.
-   **Nothing in Stage 5 is blocked. What is owed is all mine:** the walk-through I asked Claude
-   to defer, the "Explain it back", and the `LEARNING_LOG.md` entries.
-   **Both clips, side by side — and each one's checkable fact came out right:**
-   | | SNGS-043 (a goal) | clip04 (a near miss) |
-   |---|---|---|
-   | kick frame | 602 | 196 |
-   | usable frames | 15 | 29 |
-   | reprojection | **3.70 px** | **9.20 px** |
-   | launch speed | 117 km/h | 106 km/h |
-   | at the goal line | x +3.24 m → **inside** ✅ | x +4.53 m → **outside** ✅ |
-   **The four things in this stage I should be able to explain before it closes:**
-   - Why the unconstrained fit chose 272 km/h *into the ground*, and why `vz ≥ 0` is a
-     measurement-free fact that fixes it.
-   - Why two answers 0.4 px apart can be 70 km/h and 171 km/h, and what that says about how much
-     a single camera can ever know.
-   - Why free flight ends at the goal line (617) and not where the pixel step collapses (622).
-   - Why binning "objects that never move" in pixels found nothing, and in metres found the
-     culprit — and what that says about every other per-pixel rule in this repo.
-   - Why depth-from-size is wrong by a fixed *percentage* of the distance rather than a fixed
-     number of metres, and why a correction factor could not fix it.
-   - Why frame 601 is a *corner* and frame 204 is an *outlier*, when both sit off the line through
-     their neighbours — and why no threshold can tell them apart cleanly.
-   **Known soft spots, stated rather than hidden:** k = 0.046 1/m is 3.5× a real ball's, so drag
-   is absorbing other errors; C2's 0.42 m margin is smaller than our camera's 2.25 m error at the
-   ball; C3's shadow plot is dominated by that same camera offset, so it cannot measure height on
-   this clip; the ball detector's whole-clip recall is only 53% even at native resolution; and
-   PLAN.md's 4.2 m figure for depth-from-size does not survive contact with the data (we measure
-   17.9 m), so the baseline our fit "had to beat" was set four times too kindly.
-3. **clip04 poses DONE 2026-09-18** — I ran the Kaggle notebook myself
-   (`notebooks/kaggle/football3d_clip04_poses.ipynb`), 4 tracks, 337/313/332/337 frames at 49.95 fps.
-   **clip04's poses beat SNGS-043's, and exactly where predicted — in the tails:**
-   | facing error, median / 95th | track 10 (shooter) | 15 | 17 | 9 |
-   |---|---|---|---|---|
-   | samples above 3 m/s | 61 of 337 | 128 of 313 | 86 of 332 | 62 of 337 |
-   | **pitch space** | **11.4° / 23.2°** | 22.3° / 51.8° | 15.7° / 42.2° | **6.3° / 23.9°** |
-   | camera space, best-case zero | 7.4° / 139.1° | 41.1° / 134.2° | 8.5° / 87.6° | 9.2° / 45.8° |
-   SNGS-043's were 10.4°/66.6°, 15.2°/52.0°, 29.9°/104.1°. Medians are comparable; **95th
-   percentiles are 2–4× better**, because clip04's tracks are unbroken and SNGS-043's worst frames
-   were always join hand-overs. Boxes 86–98 px vs 78. Unlike SNGS-043 the shooter has a real
-   number here (61 running samples, not 4).
-   **Honest oddity:** on tracks 10 and 17 the camera-space median is *lower* than pitch space
-   (7.4 vs 11.4, 8.5 vs 15.7). That row gets the offset minimising its own error and clip04's
-   players run in a narrow spread of directions, so one offset fits the middle. Its tails give it
-   away: 139.1° vs 23.2°.
-   **Pose files are now named per clip.** A track id means nothing without its clip: SNGS-043 has
-   a track 17 and so does clip04, and downloading the new one nearly destroyed the old — the
-   browser saved it as `pose_17-3.npz` instead of overwriting, which is the only reason nothing
-   was lost. Three scripts built the flat `pose_{id}.npz` path, so the collision was in the code
-   too. New `orient.pose_npz(clip, track)` / `orient.pose_mesh(clip, track)` →
-   `pose_<clip>_<track>.npz`; `draw_facing.py`, `orientation_error.py` and `reproject_smpl.py` use
-   it, and the 8 active files were renamed. SNGS-043's numbers are unchanged after the rename
-   (track 284 still 10.4° / 66.6°), which is how I know nothing else moved.
-   **`--smooth-yaw` swept 1..15 (and out to 41), 2026-09-18 — and the sweep cannot choose it.**
-   | median facing error | w=1 | w=5 | w=9 | w=15 | w=31 | w=41 |
-   |---|---|---|---|---|---|---|
-   | clip04 track 17 | 16.7° | 15.7° | 15.7° | 13.9° | 11.3° | 11.6° |
-   | clip04 track 15 | 21.8° | 22.3° | 21.0° | 20.2° | 19.2° | 18.4° |
-   | SNGS-043 track 284 | 11.2° | 10.4° | 10.3° | 9.0° | 8.6° | 8.2° |
-   It falls **monotonically and never turns around**, so "optimise the window" means "smooth until
-   the signal is gone" — and w=41 is 0.82 s on clip04, 1.64 s on SNGS-043, long enough to erase
-   real turning (a player turns 180° in about half a second). **The proxy prefers smoothing because
-   the proxy is itself smooth:** travel direction comes from tracker positions 4 frames apart, so
-   it rewards anything that makes the pose yaw smoother whether or not the pose got better. A
-   parameter must never be tuned against a metric it can game.
-   What the sweep *does* establish: across w=1..15 the median moves by only **0.8–3.3°** on every
-   track of both clips — inside the proxy's noise. So pick the window on physics and keep it
-   consistent in **time**: raw per-frame yaw change is 1.5–2.2°/frame on clip04 against 3.6–4.2°
-   on SNGS-043, a ratio of ~2 which is exactly 49.95/25 — the same angular noise spread over twice
-   as many frames. SNGS-043's w=5 at 25 fps is 0.20 s, so clip04 is re-exported at **w=9**
-   (0.18 s). The numbers did not move: 12.0 / 21.0 / 15.7 / 6.4° against 11.4 / 22.3 / 15.7 / 6.3°.
-   **The step I had left out of my own instructions:** HMR2 saves pose *parameters*, not vertices,
-   so `apply_smpl.py --input … --output …_vertices.npz` runs **before** `export_smpl_mesh.py`.
-   `export_kaggle_inputs.py` now prints the full seven steps.
-4. **Viewer fixes, 2026-09-18** (found by asking which clips are showcasable):
-   - The 2D fallback ball read `ball_px` from `tracks.json` — the *player* detector's ball, which
-     on clip04 jumps **1690 px** to the spare balls by the ad boards. It now reads
-     `data/ball/<clip>_clean.json` (`label` rows only), falling back to `tracks.json` only for a
-     clip with no ball file (SNGS-028).
-   - **Poses were not clip-aware.** `POSES` was a flat list of SNGS-043's four tracks loaded on
-     every clip, so clip04 announced "4 posed tracks" it does not have and id 1131 could have
-     landed on whoever clip04 calls 1131. Now `ALL_POSES` carries a `clip` field and `POSES`
-     filters on it; clip04 reads "capsules only, no poses". An SNGS-043-only `console.assert`
-     (frame 599) is guarded too.
-5. **`SHOWCASE.md` is the two demo versions** — what each clip has, the numbers, the exact URL and
-   frame to scrub to, and the honest limits to admit if asked.
-6. **Parked, not blocking:** track 171's facing is 30° median over 68 running samples and its worst
-   frames (568–572) are the hand-over inside the joined track. That is a tracking problem, and it is
-   the Stage 2 team-colour idea coming back.
-7. **Wrap-up still owed for 2026-09-15** (CLAUDE.md rule 5): detection vs tracking, ID switches, NMS,
-   *where* vs *who*, foot point → meters, wobble, goal side. 2026-09-16 has its `LEARNING_LOG.md`
-   entry; parts of it are Claude's wording and I should rewrite those in my own words.
-8. Open questions I haven't answered yet (no rush, they're small):
-   - (B)'s biggest error is exactly 3.00 m while (A)'s is 12.9 m. Why, and what does that do to
-     comparing (B) with (A)?
-   - If PnLCalib gave a perfect camera tomorrow, which file changes: `data/track/…` or `data/tracks/…`?
-9. Left in Stage 2 on purpose, to pick up when it matters: use the team colours to refuse a join or a
-   tracker hand-over between two different kits (69% of ID switches are swaps, which joining can't fix).
-
-**Pipeline for a clip, as it runs today** (all from the repo root, all local on the Mac):
-1. Frames: `src/extract_frames.sh "<source video>" clip04 00:02:09 00:02:15.74` →
-   `data/frames/clip04/00000.jpg …` (source video + times in `data/clips/README.md`).
-2. Camera per frame: PnLCalib on Kaggle (`notebooks/kaggle/pnlcalib_clip04.ipynb`) →
-   `data/pnlcalib/pnlcalib_raw_clip04.json` → `uv run python src/calib/export_camera.py clip04` →
-   `data/camera/clip04.json`. Checked against my clicks with `src/calib/compare_pnl.py clip04`.
-3. Detection + tracking: `uv run python src/track/detect_track.py clip04` (~1 min on MPS) →
-   `data/track/clip04_football-player-detection-v9_botsort.json` (raw boxes, pixels).
-4. Feet → meters: `uv run python src/track/to_pitch.py clip04` → `data/tracks/clip04.json`
-   (= `tracks.json`). Also smooths each track over `SMOOTH_S` = 0.84 s and joins track pieces
-   (`JOIN_GAP_S` = 1 s, `JOIN_DIST` = 3 m). Prints check 1 (clicks → meters) and check 2 (top speed
-   per ID). `to_pitch.py clip04 0` turns smoothing off, any other number = window in frames.
-5. Teams: `uv run python src/track/teams.py clip04` → fills `team` in the same `tracks.json`
-   ("A" / "B" / "other"). Run it after `to_pitch.py`, which resets `team` to null.
-6. Minimap: `uv run python src/track/minimap.py clip04` → `outputs/minimap_clip04.mp4` (dot = team,
-   trail = track id, white rings = ground truth on SoccerNet clips).
-   Boxes-only video for comparing detectors/trackers: `src/track/draw_tracks.py <raw json>`.
-7. Watch it in 3D: `python3 -m http.server 8000` **from the repo root**, then
-   `http://localhost:8000/src/viewer/?clip=clip04`. Buttons: goal view (`c`), show gaps (`g`).
-   After editing the page, hard-reload (Cmd-Shift-R) or the browser serves the old one.
-
-**SoccerNet GSR clip (ground truth), as it runs today:**
-1. `uv run python src/track/fetch_soccernet.py` (list clips) → `… fetch_soccernet.py SNGS-028` →
-   `data/soccernet/SNGS-028/img1/000001.jpg …` + `Labels-GameState.json`. Add the clip to
-   `GOAL_SIDE` in `src/calib/compare_pnl.py`.
-2. Zip `<clip>/img1` → Kaggle dataset → `notebooks/kaggle/pnlcalib_soccernet.ipynb` →
-   `data/pnlcalib/pnlcalib_raw_<clip>.json` → `uv run python src/calib/export_camera.py SNGS-028`.
-3. Steps 3–5 of the clip pipeline above work on SoccerNet clips too (`detect_track.py SNGS-028`
-   ~3 min, `to_pitch.py SNGS-028`, `minimap.py SNGS-028` with the true players as white rings).
-4. `uv run python src/track/eval_soccernet.py SNGS-028` → the four numbers: **(A)** camera only
-   (their perfect boxes through our H), **(B)** full pipeline (where our dots are, plus missed and
-   extra), **(C)** identity (our ids per real player, ID switches, merged ids), **(D)** teams.
-
-**Known issues, parked on purpose (and where each one gets fixed):**
-- **Track IDs are still not one-per-player:** 24 IDs for ~20 people on clip04. Causes: extra
-  boxes where two players overlap (#113, #171, #19, #265 — #265 "runs" 12.9 m/s), and the
-  goalkeeper lost at frame 228 → back as #250 at 262. Longer tracker memory and appearance re-ID
-  did NOT help (tested). Planned fix = "join track pieces in meters" (Stage 2 → Build), measured
-  against SoccerNet.
-- **Wobble:** 0.17 m per dot on average (95% under 0.46 m, max 1.49 m). Split: camera part
-  (all dots move together, PnLCalib) 0.10 m, box part (each dot alone) 0.14 m, all big jumps are
-  boxes. Fixes: smoothing per track (Stage 2, measured vs SoccerNet), ankles instead of box
-  bottom (Stage 4), steadier camera (before Stage 5).
-- **PnLCalib camera "moves" ~8 m while zooming** (zoom vs distance trade-off). Fix with one fixed
-  camera position per clip, only pan/tilt/zoom per frame — before Stage 5.
-- **Class labels of the football detector are unreliable on our match:** the referee is called
-  "player" 97% of the time, a Barcelona player "referee" 90 times, the goalkeeper right only
-  about half the time. Use it for *where*, not *who*. `team` in `tracks.json` is `null` →
-  team classification is still needed before Stage 3 (team colours).
-- **Ball:** 2–4 "ball" boxes in 255 of 337 frames (spare balls by the ad boards, false boxes),
-  so "ball found in 296 frames" is too optimistic. `ball_px` = most confident box. Stage 5.
-- **`MIN_CONF = 0.5`** in `src/track/to_pitch.py` (drop person tracks with a lower mean YOLO
-  confidence) was picked on clip04 alone: junk 0.20–0.43, real players ≥ 0.60. Re-check the gap
-  on other clips/recordings.
-- **Touchlines** on the minimap assume a 68 m wide pitch (±34 m): drawing only, never measured.
-- ~~clip04-only `pitch_to_soccernet`~~ Fixed 2026-09-15: `GOAL_SIDE[clip]` in `compare_pnl.py`
-  ("left"/"right" = SoccerNet X = ∓52.5), checked on SNGS-033 frame 400 with the label positions
-  (`outputs/axes_SNGS-033_00400.jpg`). A new clip needs its line in `GOAL_SIDE`.
-- **Questions I skipped on 2026-09-15/16 (optional):** where on a pitch does the camera see the
-  fewest lines? Will (A) be bigger or smaller than clip04's 0.35 m, and why? Why can't
-  `rep_err_px` alone be trusted? Why does the right goal put the keeper's right at −Y?
-- **Questions I skipped (optional to revisit):** is the worst check-1 point (0.98 m) far from
-  the camera or near, and why? What is #265 at 12.9 m/s around frame 325? How far behind a player
-  does a knee-height box put him (head at 1.8 m → 6.6 m behind)?
-
----
 
 ## Stage 0 — Setup and choosing clips  (~1 session)
 

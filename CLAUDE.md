@@ -10,13 +10,23 @@ The full roadmap is in `PLAN.md`. My notes are in `LEARNING_LOG.md`.
 
 ## Resuming in a new chat (do this first)
 I often continue in a new chat or with a different model, with no memory of earlier chats.
-1. Read this file, then **`PLAN.md` → "Current status"** (where we are, the exact next step,
-   known issues), then the last entry of `LEARNING_LOG.md`, then `git log --oneline -10`.
-2. Check the local-only files the next step needs still exist (list below) before relying on them.
-3. Tell me in 3–5 lines where we are and what's next, then continue. Don't redo finished work,
+1. Read this file, then **`PLAN.md` → "Current status — READ THIS FIRST"** (the ~45-line block at
+   the top: the four stage numbers, the two demo clips, the self-checks, and three traps this
+   project has already fallen into). Then `git log --oneline -10`.
+2. **Do NOT read all of `PLAN.md` before starting.** It is ~1100 lines. Everything below
+   "History — how each number was reached" is reference: go there when you need to know *why* a
+   decision was made, not to get oriented. The per-stage sections matter only for the stage you
+   are working on.
+3. Run the self-checks listed in that top block before you change anything, so you know whether
+   something was already broken. Check the local-only files the next step needs still exist
+   (table below) — `data/` is gitignored, so it does not come back from GitHub.
+4. Tell me in 3–5 lines where we are and what's next, then continue. Don't redo finished work,
    don't re-open decisions recorded in PLAN.md unless you have a measured reason.
-4. Keep "Current status" in `PLAN.md` up to date when a task finishes or a decision is made —
-   it's the handover note for the next chat.
+5. Keep the top block of `PLAN.md` up to date when a task finishes or a decision is made — it is
+   the handover note for the next chat, and it must stay short. New detail goes in the History
+   section, not in the brief.
+6. `SHOWCASE.md` is the demo note: the two clips, their links, the numbers and the honest limits.
+   Read it if I ask to show the project to someone; ignore it otherwise.
 
 ## How you (Claude) should work with me
 
@@ -106,6 +116,11 @@ Don't write the explanation for me — correct it if it's wrong.
 | `data/kth/sequence2/` | KTH Football II, one sequence (Stage 4) | see PLAN.md → Resources |
 | `data/models/yolo-sn-ball-opt.pt` | SoccerNet-v3D ball detector (49 MB, GPL-2.0) | `curl -L -o data/models/yolo-sn-ball-opt.pt https://github.com/mguti97/SoccerNet-v3D/releases/download/v1.0.0/yolo-sn-ball-opt.pt` |
 | `data/snv3d/SNv3D.csv` | SoccerNet-v3D ball ground truth (3.6 MB, 4051 rows) | same release, `.../download/v1.0.0/SNv3D.csv` |
+| `data/pose/npz/pose_<clip>_<track>.npz` | HMR2 output per posed track (SNGS-043: 1131/284/17/171, clip04: 10/15/17/9) | rerun the clip's Kaggle notebook in `notebooks/kaggle/` |
+| `data/pose/npz/pose_<clip>_<track>_vertices.npz` | baked SMPL vertices | `src/pose/apply_smpl.py --input <npz> --output <…_vertices.npz>` |
+| `data/pose/mesh/pose_<clip>_<track>.smpl` | the viewer's mesh | `src/pose/export_smpl_mesh.py <…_vertices.npz> <…smpl> --clip <clip> --track <id> --smooth-yaw <5 on SNGS-043, 9 on clip04>` |
+| `data/ball/<clip>.json`, `_clean.json`, `_fit.json` | Stage 5 ball track, cleaned, fitted | `src/ball/from_labels.py` (or `detect.py --write`) → `clean.py` → `fit.py` |
+| `data/kaggle/<clip>_pose_inputs.zip` | what a pose run needs on Kaggle | `src/pose/export_kaggle_inputs.py <clip> <tracks…>` |
 | `outputs/` | pictures and videos | rerun the script that made them |
 
 ## Code layout
@@ -113,6 +128,14 @@ Don't write the explanation for me — correct it if it's wrong.
   (`from homography import project`): Python puts a script's own folder on the import path.
 - `src/track/` — Stage 2. They add `src/calib` to `sys.path` to reuse Stage 1 code;
   `[tool.pyright] extraPaths = ["src/calib"]` in `pyproject.toml` makes the editor find it too.
+- `src/pose/` — Stage 4. `orient.py` is the one to know: it turns HMR2's camera-space body into
+  pitch space, and owns `pose_npz(clip, track)` / `pose_mesh(clip, track)` — **always build pose
+  paths through those**, never by hand, because a track id means nothing without its clip.
+- `src/ball/` — Stage 5, in pipeline order: `from_labels.py` (or `detect.py --write` for a clip
+  with no labels) → `clean.py` → `fit.py` → `draw.py`. `size_baseline.py` is the rival method the
+  fit is measured against.
+- `src/viewer/index.html` — the 3D viewer. `ALL_POSES` lists every pose mesh with its `clip`;
+  `POSES` filters to the clip being viewed.
 - Every script has a `Usage:` line at the top and is run from the repo root with
   `uv run python src/<folder>/<script>.py …`. The full pipeline order is in PLAN.md → Current status.
 - Reuse what exists before writing new code: e.g. `project(H, pts)` in `src/calib/homography.py`
