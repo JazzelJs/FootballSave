@@ -45,6 +45,32 @@ uv run python src/pose/orientation_error.py SNGS-043 284   # 10.4° / 66.6°, un
 `SHOWCASE.md` if you are demoing → `git log --oneline -10`. **The dated history below is
 reference, not required reading** — go there only when you need to know why a decision was made.
 
+**Where Stage 5's ball fit STOPS working — measured on SNGS-028, 2026-09-18.** We tried it as a
+third clip and it fails, for a reason worth knowing: **the fit needs the ball to start on the
+ground.** `KICK` has no entry for SNGS-028 on purpose.
+- The event is at frame 387 (`action_class` "Shots off target"), the camera there is healthy (the
+  69 filled frames are at 97–123 and 236–264), and the ball data is the best of the three clips —
+  739/750 frames, boxes median **16 px** against SNGS-043's 12.
+- Yet every fit variant returns ~55–60 km/h at 45–53° with **19–27 px** reprojection, against
+  3.70 px on SNGS-043. Swapping our kick point for the labels' own (4.40 m away) moves it only to
+  19.3 px, and widening p0's leash to 6 m changes nothing — so it is **not** our camera.
+- **The ball is already airborne before the "kick".** Over frames 376–386 the labels' ground track
+  implies it accelerates 7.6 → 29.1 m/s, which at that distance would move it **26–88 px/frame**.
+  It actually moves **0–4 px/frame**. A ball that barely moves in the image while its computed
+  grass point runs away is travelling nearly along the camera ray — it is going up, and what moves
+  is the shadow. (Same signature in the two calibrations diverging 0.37 → 4.21 m across those
+  frames: a rising ball's grass intersection is very sensitive to camera tilt, so two slightly
+  different cameras disagree more and more.)
+- So `p0` on the grass with `z0 = 0` — the anchor that breaks the ray ambiguity in B2 — **does not
+  exist for this shot**. Freeing `z0` would restore the ambiguity with nothing to pin it. Making
+  this work needs a second, independent depth prior: the apparent-size method from D1 is the
+  obvious candidate, at 20% of the distance.
+- **Also found, and reusable:** SoccerNet's labels carry `info.action_position` and
+  `info.clip_start`. For SNGS-043 that gives frame **618.7**, and our fit puts the ball crossing
+  the goal line at **617.4** — **1.3 frames (52 ms) apart**, an independent check on Stage 5 from an
+  annotation we had never opened. Careful though: it marks the *event*, not the kick. On SNGS-043
+  (a Goal) it is the ball crossing the line; on SNGS-028 (Shots off target) it is the strike.
+
 **Three traps this project has already fallen into.** They will recur:
 1. **A track id means nothing without its clip.** SNGS-043 and clip04 both have a track 17.
    Pose files are `pose_<clip>_<track>.npz`; the viewer's `ALL_POSES` carries a `clip` field.
