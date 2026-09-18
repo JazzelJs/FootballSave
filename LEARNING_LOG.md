@@ -224,3 +224,75 @@ The higher the body part, the farther back it lands: the head ends up meters beh
   broadcast crop, and how much the pose changes when the actual shooter is used.
 - **Next step:** Run track 18 through the same notebook, compare it with the ball at frame 602, and
   add the ball to the viewer before starting Stage 5 camera/ball work.
+
+### 2026-09-15 — Stage 2 (STUB, still owed by me)
+Claude filled in the facts on 2026-09-18; the two "in my own words" parts are mine to write.
+- **What I did:** Downloaded SoccerNet GSR clips SNGS-028 and SNGS-043 and built the (A)/(B)/(C)/(D)
+  evaluation against their ground truth. Ran PnLCalib on both on Kaggle.
+- **What I learned (explain like to a friend):** *(mine — the topics I said I'd cover: detection vs
+  tracking, what an ID switch is, what NMS does, "where" vs "who", why the foot point is the pixel
+  that becomes metres, what wobble is, and which goal is ours)*
+- **Numbers / results:** (A) camera only 0.57 m / 0.55 m median. The labels' own wobble is 0.17 m /
+  0.19 m. The mean was 3389 m on SNGS-028 because a few broken-camera frames throw feet thousands
+  of metres — which is why we report the median and the 95th, never the mean.
+- **Still confused about:** *(mine)*
+- **Next step:** done — Stage 2 finished on 09-16.
+
+### 2026-09-18 — Stage 4 finished: absolute facing
+- **What I did:** Replaced the viewer's hand-tuned 180° body flip with a real change of basis:
+  `src/pose/orient.py` composes `WORLD_TO_SCENE[goal] @ R_pnl.T @ crop_to_full(K, box centre)`.
+  Deleted `--stabilize-yaw`, `--mirror-left-right`, `--align-yaw-frame` and the `poseRotation`
+  query override. Measured facing against the direction of travel on three running players.
+- **What I learned (explain like to a friend):** *(mine. Two things worth getting right: (1) why
+  negating ONE axis is a mirror and not a rotation, and why that was the real cause of the
+  "wrong kicking leg"; (2) why facing is not estimated at all but converted, given PnLCalib
+  already knows the camera's rotation.)*
+- **Numbers / results:** pitch-space facing error 10.4° / 15.2° / 29.9° median (tracks 284, 17, 171)
+  against camera space's best possible 16.8° / 21.2° / 53.2°. Two predictions of mine were wrong
+  and both were checked: smoothing yaw in pitch space is NOT better than in camera space
+  (3.4° vs 3.6° per frame — the pan is only ~0.2°/frame, so it corrupts the absolute zero, not the
+  jitter), and the shooter's 1.2° looked like a win but rests on 4 running samples, so it is noise.
+- **Still confused about:** *(mine)*
+- **Next step:** done — Stage 5.
+
+### 2026-09-18 (part 2) — Stage 5: the ball in 3D from one camera
+- **What I did:** Built the whole stage: `from_labels.py` → `clean.py` → `fit.py` → `draw.py`, plus
+  `size_baseline.py` for the rival method. The fit solves for the launch velocity (and drag) by
+  reprojecting a thrown ball through PnLCalib's full camera and comparing with the ball's pixels.
+  **I asked Claude to write this under time pressure, so the walk-through and the explanations
+  below are owed by me.**
+- **What I learned (explain like to a friend):** *(mine. The four I said I should be able to
+  explain: (1) why the unconstrained fit chose 272 km/h INTO the ground, and why `vz >= 0` is a
+  measurement-free fact that fixes it; (2) why two answers 0.4 px apart can be 70 km/h and
+  171 km/h, and what that says about what one camera can ever know; (3) why free flight ends at
+  the goal line (617) and not where the pixel step collapses (622); (4) why depth-from-size is
+  wrong by a fixed PERCENTAGE of the distance rather than a fixed number of metres.)*
+- **Numbers / results:** SNGS-043 — 3.70 px median reprojection over 15 frames, 117 km/h, crossing
+  the goal line at x +3.24 m, **0.42 m inside the post**, which matches the fact that the shot was
+  scored and that nobody annotated. Drag earns its place: 6.31 → 3.70 px, and without it the fit
+  misses the goal by 6.04 m. Depth-from-size on SoccerNet-v3D's own 4051 rows is **17.9 m mean on
+  the held-out test split** — about 20% of the distance in every band, and 4× worse than the 4.2 m
+  PLAN.md credited to it, because the annotation boxes are 23% bigger than the ball.
+  Ball detector recall: 53% over the clip at native resolution, but **81% during the flight**.
+- **Still confused about:** *(mine. One candidate: the drag coefficient came out at 0.046 1/m,
+  3.5× a real football's 0.013 and near its bound — what is it absorbing?)*
+- **Next step:** done — clip04.
+
+### 2026-09-18 (part 3) — clip04 end to end, and two demos
+- **What I did:** Ran the clip04 pose notebook on Kaggle myself (4 tracks), wired the bodies into
+  the viewer, fitted clip04's ball, and wrote `SHOWCASE.md` for the two demo versions. Swept
+  `--smooth-yaw` from 1 to 41.
+- **What I learned (explain like to a friend):** *(mine. The one I most want in my own words: why
+  binning "objects that never move" in PIXELS found nothing, and in METRES found the culprit —
+  and what that says about every other per-pixel rule in this repo.)*
+- **Numbers / results:** clip04 — 106 km/h, 9.20 px over 29 frames, crossing at x +4.53 m,
+  **0.87 m outside the post**, on a clip that is a near miss and has no ground truth at all.
+  Poses: facing 12.0° / 21.0° / 15.7° / 6.4° median. The medians match SNGS-043 but **the 95th
+  percentiles are 2–4× better** (21–51° vs 66–104°) because clip04's tracks are unbroken, and
+  SNGS-043's worst frames were always the join hand-overs. Boxes 86–98 px vs 78 px.
+  The yaw sweep **cannot pick the window**: the error falls monotonically out to a 0.8 s window,
+  because the travel-direction reference is itself smooth and rewards any smoothing at all. Across
+  w=1..15 the median moves under 3.3° on every track, so the window is chosen on physics — matched
+  in time, w=5 at 25 fps and w=9 at 49.95 fps.
+- **Still confused about:** *(mine)*
+- **Next step:** the "Explain it back" answers for Stages 4 and 5, and filling in the blanks above.
