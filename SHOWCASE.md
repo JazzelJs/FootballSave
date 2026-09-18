@@ -46,12 +46,14 @@ detector only knows players who are *playing* — the celebration empties the pi
 
 `http://localhost:8000/src/viewer/?clip=clip04` — **scrub to ~4.2 s.**
 
-Our own broadcast clip, with no ground truth of any kind. The ball still works.
+Our own broadcast clip, with no ground truth of any kind. Everything works, and the poses are
+**better than Version 1's** — see below.
 
 | | |
 |---|---|
 | players | 337 frames (6.7 s), 23 tracks, teams assigned |
-| posed bodies | **none yet** — the viewer says "capsules only, no poses" |
+| posed bodies | **4** — tracks 10 (the shooter), 15, 17, 9 |
+| facing | **11.4° / 22.3° / 15.7° / 6.3°** median on the four |
 | ball in 3D | **106 km/h**, 9.20 px reprojection, **0.87 m outside the post** ✅ |
 
 **The point of this one is the near miss.** clip04 is a shot that misses, and the fit — with no
@@ -62,30 +64,24 @@ not tell it the answer.
 **Frames 196–227** are the flight (0.64 s). The kick is at 196; contact is actually at 194–195,
 inside the ball detector's blind spot, because a ball being struck is motion-blurred.
 
-### To finish Version 2 — one Kaggle session
+### Why Version 2's poses came out better
 
-Four tracks are ready and they are a *better* pose target than SNGS-043: boxes **86–98 px** tall
-against SNGS-043's 78 px, and the tracks are **unbroken** (313–337 boxes of 337 frames, no joined
-fragments, so no hand-over errors).
+Same model, same code, better input — and the improvement lands exactly where it was predicted to.
 
-```
-uv run python src/pose/export_kaggle_inputs.py clip04 10 15 17 9
-```
+| facing error, median / 95th | SNGS-043 | clip04 |
+|---|---|---|
+| best track | 10.4° / **66.6°** | 6.3° / **23.9°** |
+| the shooter | 1.2° (only 4 running samples — noise) | 11.4° / **23.2°** (61 samples) |
+| worst track | 29.9° / **104.1°** | 22.3° / **51.8°** |
 
-Then follow the five steps it prints. Track **10 is the shooter**. After the run:
+The medians are comparable. **The tails are two to four times better**, because clip04's tracks are
+unbroken (313–337 boxes of 337 frames) while SNGS-043 averaged 5.5 fragments per player — and
+SNGS-043's worst frames were always the join hand-overs. Boxes are bigger too: 86–98 px against 78.
 
-```
-uv run python src/pose/export_smpl_mesh.py --clip clip04 --track 10 --smooth-yaw 5
-```
-
-and add `{ clip: 'clip04', trackId: 10, file: 'pose/mesh/pose_10.smpl' }` to `ALL_POSES` in
-`src/viewer/index.html`. `orient.py` needs the per-frame camera and `GOAL_SIDE['clip04']`, both of
-which already exist, so facing works with no new code.
-
-**Two things to check rather than assume.** clip04 has no ground truth, so PA-MPJPE is not
-available — the only facing check is the direction-of-travel proxy, whose own noise floor is about
-10°. And clip04 runs at **49.95 fps**, so `--smooth-yaw 5` is 0.1 s here versus 0.2 s on SNGS-043;
-re-measure that window instead of inheriting it.
+One oddity to be honest about: on tracks 10 and 17 the camera-space row has a *lower median* than
+pitch space (7.4° vs 11.4°, 8.5° vs 15.7°). That row is handed the offset that minimises its own
+error, and clip04's players run in a narrow range of directions, so one fixed offset can fit the
+middle well. Its tails give it away — 139.1° at the 95th against pitch space's 23.2°.
 
 ---
 

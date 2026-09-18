@@ -56,11 +56,18 @@ const dataRoot = location.protocol === 'file:' ? './data' : '../../data';
 // tracks" for a clip that has none -- and id 1131 could land on whoever clip04 happens to call
 // 1131. ALL_POSES is the catalogue; POSES is what this clip actually has.
 const ALL_POSES = [
-  { clip: 'SNGS-043', trackId: 1131, file: 'pose/mesh/pose_1131.smpl' },  // the shooter
+  // Mesh files carry the clip in their name for the same reason this list does: SNGS-043 has a
+  // track 17 and so does clip04, and a flat pose_17.smpl cannot be both.
+  { clip: 'SNGS-043', trackId: 1131, file: 'pose/mesh/pose_SNGS-043_1131.smpl' },  // the shooter
   // The three stable players nearest the goal during clip time 00:00:15–00:00:25.
-  { clip: 'SNGS-043', trackId: 284, file: 'pose/mesh/pose_284.smpl' },
-  { clip: 'SNGS-043', trackId: 17, file: 'pose/mesh/pose_17.smpl' },
-  { clip: 'SNGS-043', trackId: 171, file: 'pose/mesh/pose_171.smpl' }
+  { clip: 'SNGS-043', trackId: 284, file: 'pose/mesh/pose_SNGS-043_284.smpl' },
+  { clip: 'SNGS-043', trackId: 17, file: 'pose/mesh/pose_SNGS-043_17.smpl' },
+  { clip: 'SNGS-043', trackId: 171, file: 'pose/mesh/pose_SNGS-043_171.smpl' },
+  // clip04: the shooter is 10; 15, 17 and 9 sit 13–18 m out, in the ball's path.
+  { clip: 'clip04', trackId: 10, file: 'pose/mesh/pose_clip04_10.smpl' },
+  { clip: 'clip04', trackId: 15, file: 'pose/mesh/pose_clip04_15.smpl' },
+  { clip: 'clip04', trackId: 17, file: 'pose/mesh/pose_clip04_17.smpl' },
+  { clip: 'clip04', trackId: 9, file: 'pose/mesh/pose_clip04_9.smpl' }
 ];
 const POSES = ALL_POSES.filter(pose => pose.clip === clip);
 

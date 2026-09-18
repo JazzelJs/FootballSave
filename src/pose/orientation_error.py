@@ -23,7 +23,7 @@ def wrap_degrees(angle):
 
 
 def main(clip, track_id, smooth_window, min_speed):
-    source = np.load(ROOT / "data" / "pose" / "npz" / f"pose_{track_id}.npz")
+    source = np.load(orient.pose_npz(clip, track_id))
     frames = np.asarray(source["frame"], dtype=int)
     global_orient = np.asarray(source["global_orient_rotmat"], dtype=float)[:, 0]
     rotations = orient.scene_rotations(clip, track_id, frames)

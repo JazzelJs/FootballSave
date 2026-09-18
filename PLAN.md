@@ -307,22 +307,33 @@ The four numbers the eval prints: **(A)** camera only · **(B)** full pipeline, 
    this clip; the ball detector's whole-clip recall is only 53% even at native resolution; and
    PLAN.md's 4.2 m figure for depth-from-size does not survive contact with the data (we measure
    17.9 m), so the baseline our fit "had to beat" was set four times too kindly.
-3. **clip04 poses are prepared and waiting on one Kaggle session** (written 2026-09-18).
-   `uv run python src/pose/export_kaggle_inputs.py clip04 10 15 17 9` →
-   `data/kaggle/clip04_pose_inputs.zip` (0.1 MB: the raw track JSON + a manifest that makes a
-   stale upload fail loudly), then `notebooks/kaggle/football3d_clip04_poses.ipynb`.
-   **clip04 is a better pose target than SNGS-043, measured:** boxes **86–98 px** tall (clip
-   median 92) against the **78 px** of SNGS-043's shooter, and the tracks are **unbroken** —
-   313–337 boxes out of 337 frames, so no `TARGETS` entry needs several raw ids and the join
-   hand-over that ruined track 171's facing cannot happen. **Track 10 is the shooter** (2.1 m from
-   the ball at 192, 2.2 m at 196). The others sit 13–18 m out, in the ball's path.
-   Deliberately **not** pre-cropped: HMR2 takes the full frame plus a box, and `orient.py`'s CLIFF
-   correction needs the box centre in full-frame pixels — pre-cropped images would silently break
-   every facing angle.
-   After the run: `export_smpl_mesh.py --clip clip04 --track <id> --smooth-yaw 5`, then add
-   `{ clip: 'clip04', trackId: <id>, … }` to `ALL_POSES`. Two things to check, not assume: clip04
-   has **no ground truth**, so no PA-MPJPE — only the travel-direction proxy with its ~10° floor;
-   and clip04 is **49.95 fps**, so `--smooth-yaw 5` is 0.1 s here against 0.2 s on SNGS-043.
+3. **clip04 poses DONE 2026-09-18** — I ran the Kaggle notebook myself
+   (`notebooks/kaggle/football3d_clip04_poses.ipynb`), 4 tracks, 337/313/332/337 frames at 49.95 fps.
+   **clip04's poses beat SNGS-043's, and exactly where predicted — in the tails:**
+   | facing error, median / 95th | track 10 (shooter) | 15 | 17 | 9 |
+   |---|---|---|---|---|
+   | samples above 3 m/s | 61 of 337 | 128 of 313 | 86 of 332 | 62 of 337 |
+   | **pitch space** | **11.4° / 23.2°** | 22.3° / 51.8° | 15.7° / 42.2° | **6.3° / 23.9°** |
+   | camera space, best-case zero | 7.4° / 139.1° | 41.1° / 134.2° | 8.5° / 87.6° | 9.2° / 45.8° |
+   SNGS-043's were 10.4°/66.6°, 15.2°/52.0°, 29.9°/104.1°. Medians are comparable; **95th
+   percentiles are 2–4× better**, because clip04's tracks are unbroken and SNGS-043's worst frames
+   were always join hand-overs. Boxes 86–98 px vs 78. Unlike SNGS-043 the shooter has a real
+   number here (61 running samples, not 4).
+   **Honest oddity:** on tracks 10 and 17 the camera-space median is *lower* than pitch space
+   (7.4 vs 11.4, 8.5 vs 15.7). That row gets the offset minimising its own error and clip04's
+   players run in a narrow spread of directions, so one offset fits the middle. Its tails give it
+   away: 139.1° vs 23.2°.
+   **Pose files are now named per clip.** A track id means nothing without its clip: SNGS-043 has
+   a track 17 and so does clip04, and downloading the new one nearly destroyed the old — the
+   browser saved it as `pose_17-3.npz` instead of overwriting, which is the only reason nothing
+   was lost. Three scripts built the flat `pose_{id}.npz` path, so the collision was in the code
+   too. New `orient.pose_npz(clip, track)` / `orient.pose_mesh(clip, track)` →
+   `pose_<clip>_<track>.npz`; `draw_facing.py`, `orientation_error.py` and `reproject_smpl.py` use
+   it, and the 8 active files were renamed. SNGS-043's numbers are unchanged after the rename
+   (track 284 still 10.4° / 66.6°), which is how I know nothing else moved.
+   **The step I had left out of my own instructions:** HMR2 saves pose *parameters*, not vertices,
+   so `apply_smpl.py --input … --output …_vertices.npz` runs **before** `export_smpl_mesh.py`.
+   `export_kaggle_inputs.py` now prints the full seven steps.
 4. **Viewer fixes, 2026-09-18** (found by asking which clips are showcasable):
    - The 2D fallback ball read `ball_px` from `tracks.json` — the *player* detector's ball, which
      on clip04 jumps **1690 px** to the spare balls by the ad boards. It now reads

@@ -12,6 +12,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+
+import orient
 from ultralytics import YOLO
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -69,7 +71,7 @@ def smpl_to_world(joints, pitch_xy, rotation, goal):
 
 
 def main(clip, track_id, start, end, draw_frame):
-    pose = np.load(ROOT / "data" / "pose" / "npz" / f"pose_{track_id}.npz")
+    pose = np.load(orient.pose_npz(clip, track_id))
     poses = dict(zip(pose["frame"], pose["joints"]))
     tracks = json.loads((ROOT / "data" / "tracks" / f"{clip}.json").read_text())
     players = {f["frame"]: next((p for p in f["players"] if p["id"] == track_id), None)

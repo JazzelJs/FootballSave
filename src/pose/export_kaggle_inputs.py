@@ -98,8 +98,17 @@ def main(clip, tracks, window, with_frames):
           " saved one, the private `hmr2_cache` dataset.")
     print(f"  4. Import notebooks/kaggle/football3d_{clip}_poses.ipynb, enable Internet + a T4 GPU,"
           " Run All.")
-    print(f"  5. Download pose_<id>.npz into data/pose/npz/, then for each id:")
-    print(f"     uv run python src/pose/export_smpl_mesh.py --clip {clip} --track <id> --smooth-yaw 5")
+    print(f"  5. Download each pose_<id>.npz, rename it pose_{clip}_<id>.npz (the clip belongs in")
+    print(f"     the name -- two clips can both have a track 17) and put it in data/pose/npz/.")
+    print(f"  6. Bake vertices, THEN pack the mesh. HMR2 saves pose parameters, not vertices:")
+    print(f"     uv run python src/pose/apply_smpl.py \\")
+    print(f"       --input data/pose/npz/pose_{clip}_<id>.npz \\")
+    print(f"       --output data/pose/npz/pose_{clip}_<id>_vertices.npz")
+    print(f"     uv run python src/pose/export_smpl_mesh.py \\")
+    print(f"       data/pose/npz/pose_{clip}_<id>_vertices.npz \\")
+    print(f"       data/pose/mesh/pose_{clip}_<id>.smpl --clip {clip} --track <id> --smooth-yaw 5")
+    print(f"  7. Add {{ clip: '{clip}', trackId: <id>, file: 'pose/mesh/pose_{clip}_<id>.smpl' }}")
+    print(f"     to ALL_POSES in src/viewer/index.html.")
 
 
 if __name__ == "__main__":

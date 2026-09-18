@@ -23,6 +23,23 @@ WORLD_TO_SCENE = {"right": np.array([[0.0, -1, 0], [0, 0, -1], [1, 0, 0]]),
                   "left": np.array([[0.0, 1, 0], [0, 0, -1], [-1, 0, 0]])}
 
 
+def pose_npz(clip, track_id):
+    """Where a track's HMR2 output lives. The CLIP is part of the name, not decoration.
+
+    A track id means nothing without its clip: SNGS-043 has a track 17 and so does clip04, and
+    the flat `pose_17.npz` they both wanted cost us a near-miss -- the browser saved clip04's
+    download as `pose_17-3.npz` rather than overwriting SNGS-043's, which is the only reason the
+    older file survived. Three scripts built that flat path, so the collision was in the code too,
+    not just in the download folder.
+    """
+    return ROOT / "data" / "pose" / "npz" / f"pose_{clip}_{track_id}.npz"
+
+
+def pose_mesh(clip, track_id):
+    """The viewer's mesh for a track, named the same way and for the same reason."""
+    return ROOT / "data" / "pose" / "mesh" / f"pose_{clip}_{track_id}.smpl"
+
+
 def intrinsics(cam):
     return np.array([[cam["x_focal_length"], 0, cam["principal_point"][0]],
                      [0, cam["y_focal_length"], cam["principal_point"][1]],

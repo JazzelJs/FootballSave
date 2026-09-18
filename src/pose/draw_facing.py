@@ -28,7 +28,7 @@ STEP = 2  # frames either side, the same span orientation_error.py measures spee
 
 def facing_on_grass(clip, track_id, frame):
     """(pitch dx, dy) unit vector: where this track's body faces on the grass at this frame."""
-    source = np.load(ROOT / "data" / "pose" / "npz" / f"pose_{track_id}.npz")
+    source = np.load(orient.pose_npz(clip, track_id))
     frames = np.asarray(source["frame"], dtype=int)
     index = np.flatnonzero(frames == frame)
     if len(index) != 1:
